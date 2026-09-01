@@ -1,0 +1,19 @@
+{
+  "$comment": [
+    "CAN ID → 机构映射表。每年底盘全新，本表须在实车定版后由人填写并核对。",
+    "canId 写十六进制字符串（如 \"0x201\"）；mechanism 用中文机构名，这是给人看的。",
+    "gearRatio 不确定就留空 —— 猜一个错的减速比，会让所有转速换算悄悄错掉。",
+    "填完后 rcs_bus_decode 自动启用，代码不用改。"
+  ],
+  "season": "2027",
+  "chassis": "tbd",
+  "entries": [],
+  "$example": {
+    "canId": "0x201",
+    "mechanism": "底盘左前轮",
+    "actuator": "rm3508",
+    "direction": "feedback",
+    "gearRatio": 19,
+    "note": "示例条目，填表时删掉本节"
+  }
+}

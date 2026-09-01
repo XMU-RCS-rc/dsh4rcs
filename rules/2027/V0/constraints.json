@@ -1,0 +1,122 @@
+{
+  "$comment": [
+    "从 clauses.json 人工提炼的**机器可校验约束**，供 rcs_rule_check 使用。",
+    "每条都带 clause 字段溯源 —— 规则解读错误的代价是整套方案返工，",
+    "所以工具输出必须能指回原文条款号，不允许模型自由发挥。",
+    "V1 发布后需重新核对：V0 是 ABU 原版翻译稿，国内赛 V1 大概率会改。"
+  ],
+  "competition": "robocon-cn",
+  "season": "2027",
+  "version": "V0",
+  "theme": "女娲补天",
+  "tolerance": { "value": 0.05, "clause": "13.2", "note": "场地与用品尺寸重量除另有说明外允许 ±5% 制造公差" },
+
+  "robots": {
+    "count": { "TR": 1, "BR": 1, "clause": "11.1" },
+    "autonomy": {
+      "TR": { "mode": "manual-or-auto", "clause": "11.2" },
+      "BR": { "mode": "full-auto-required", "clause": "11.3", "note": "必须全自动，无需任何人工干预" }
+    },
+    "startEnvelopeMm": { "l": 700, "w": 700, "h": 700, "clause": "11.4", "note": "比赛开始前须完全纳入此立方体" },
+    "extendedEnvelopeMm": {
+      "TR": { "w": 1000, "l": 1400, "h": 1200, "clause": "11.5" },
+      "BR": { "w": 1000, "l": 1400, "h": 1200, "clause": "11.6" }
+    },
+    "massMaxKg": { "value": 50, "clause": "11.7", "note": "含电池、控制器、电缆" },
+    "carryLimit": {
+      "TR": { "max": 3, "clause": "3.4.3" },
+      "BR": { "max": 2, "clause": "3.4.4" }
+    }
+  },
+
+  "electrical": {
+    "batteryNominalVoltageMaxV": { "value": 24, "clause": "11.12", "note": "串联后总标称电压也须 ≤24V" },
+    "circuitMaxVoltageV": { "value": 42, "clause": "11.13", "note": "电路任意两点间实际最大电压；多路隔离时每路独立满足" },
+    "powerSources": { "allowed": ["battery", "compressed-air", "elastic"], "clause": "11.11" },
+    "forbidden": {
+      "clause": "11.15",
+      "items": ["铅酸电池", "胶粘密封电池", "爆炸性能源", "高温能源", "可能损坏场地或阻碍比赛的能源"]
+    },
+    "laser": { "standard": "IEC 60825-1", "allowedClasses": [1, 2], "clause": "11.15" }
+  },
+
+  "pneumatic": {
+    "maxPressureKPa": { "value": 600, "clause": "11.14", "note": "0.6 MPa；储气容器须为专制或原始状态安全塑料瓶" }
+  },
+
+  "wireless": {
+    "allowed": ["Wi-Fi(IEEE 802.11)", "Zigbee(IEEE 802.15)", "Bluetooth"],
+    "clause": "11.8",
+    "interRobotForbidden": { "value": true, "clause": "11.10", "note": "严禁 TR 与 BR 比赛期间无线互通" },
+    "qualityNotGuaranteed": { "clause": "11.9" }
+  },
+
+  "safety": {
+    "emergencyStop": {
+      "required": true,
+      "spec": "清晰可见且易于触及的红色急停按钮",
+      "clause": "12.2",
+      "note": "远程急停开关被强烈鼓励但非强制"
+    },
+    "forbidAerial": { "value": true, "clause": "12.6", "note": "严禁飞行机构与无人机" },
+    "suctionAllowed": { "value": true, "clause": "11.16", "note": "不得留残留物或造成损坏" }
+  },
+
+  "zones": {
+    "fieldMm": { "w": 11000, "l": 11000, "clause": "1" },
+    "startZoneMm": { "w": 700, "l": 700, "clause": "2#3" },
+    "storageZoneMm": { "w": 1000, "l": 2000, "clause": "2#6" },
+    "handoverZoneMm": { "w": 1000, "l": 1000, "clause": "2#17" },
+    "buildSpotMm": { "w": 500, "l": 500, "clause": "2#18" },
+    "L1": { "heightMm": 600, "sizeMm": 6000, "rampLenMm": 3500, "stepMm": { "l": 300, "w": 1000, "h": 150 }, "clause": "2#15" },
+    "L2": { "heightAboveGroundMm": 900, "heightAboveL1Mm": 300, "sizeMm": 3000, "clause": "2#16" },
+    "restrictions": {
+      "TR": { "allowed": ["ground", "handover"], "forbidden": ["L1", "L2"], "clause": "4.3.1" },
+      "BR": { "allowed": ["handover", "L1", "L2"], "forbidden": ["ground", "storage"], "clause": "4.3.2", "note": "启动后进入L1前可在地面区行进但不得携带塔基/中段；重试或上阶梯时可接触地面" }
+    }
+  },
+
+  "items": {
+    "baseOrMiddle": { "sizeMm": 350, "massG": [200, 350], "countPerTeam": 20, "clause": "2#11" },
+    "top": { "sizeMm": 200, "massG": [80, 150], "countPublic": 12, "clause": "2#13" },
+    "sacredStone": { "diameterMm": 200, "massG": [400, 440], "base": "4号室内五人制足球", "clause": "2#14" },
+    "stoneBase": { "heightMm": 500, "diameterMm": 270, "socketMm": { "d": 180, "depth": 100 }, "clause": "2#8" },
+    "centralBase": { "heightMm": 800, "diameterMm": 270, "socketMm": { "d": 180, "depth": 100 }, "clause": "2#19" }
+  },
+
+  "scoring": {
+    "transportToHandover": { "points": 5, "clause": "8.1", "note": "得分永久，即使随后被BR取走用于建塔" },
+    "placement": {
+      "L1": { "base": 10, "middle": 20, "top": 40 },
+      "L2": { "base": 20, "middle": 40, "top": 80 },
+      "clause": "8.2"
+    },
+    "sacredStone": { "points": 250, "clause": "8.5.1", "note": "须满足保护法则且比赛结束时仍在中央基座上" },
+    "protectionRule": {
+      "clause": "3.6.1",
+      "requirement": "至少建成两座全塔，其中至少一座位于 L1 公共区或 L2",
+      "note": "满足且五色石被移除后即永久满足（3.6.2）"
+    },
+    "invalid": { "clause": "8.6", "items": ["结束时仍被机器人接触/夹持/支撑", "未按 塔基→中段→塔顶 顺序", "被撞出场地", "推拖滑而非抬起"] }
+  },
+
+  "match": {
+    "durationSec": { "value": 180, "clause": "4.2.2" },
+    "setupMin": { "value": 1, "clause": "4.1.1" },
+    "membersOnField": { "value": 3, "clause": "4.1.6" },
+    "noEarlyWin": { "value": true, "clause": "9.1.2" }
+  },
+
+  "$visionColors": {
+    "$comment": "场地 RGB 色值，第14节。视觉组做颜色阈值时的权威来源，不要凭肉眼调。",
+    "startRetryZone": { "red": [223, 34, 34], "blue": [50, 0, 255] },
+    "buildSpot": [40, 100, 50],
+    "handoverZone": { "red": [245, 170, 60], "blue": [60, 170, 245] },
+    "groundPublic": [245, 240, 200],
+    "sacredStone": [218, 165, 32],
+    "L1Zone": { "red": [235, 180, 160], "blue": [150, 215, 220] },
+    "ramp": { "red": [200, 150, 140], "blue": [130, 180, 200] },
+    "L2Zone": [190, 190, 185],
+    "pedestal": [100, 62, 0]
+  }
+}

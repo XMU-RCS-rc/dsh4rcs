@@ -1,0 +1,13 @@
+# 本地调试用的 patch overlay（由 npm run setup 生成，已 gitignore）。
+#
+#   npm run dsh:patch          # 带此 overlay 启动
+#   npm run dsh:patch:config   # 只打印配置树，排错首选
+#
+# name 必须是 file:/// URL，不能是裸盘符路径 —— Windows 上 Node 的 ESM
+# 加载器会报 ERR_UNSUPPORTED_ESM_URL_SCHEME。注意是三个斜杠。
+# 指向 lib 而非 src：dsh 没有 TypeScript 源码加载器。
+- insert:
+    - id: rcs-control
+      name: 'file:///D:/code/dsh4rcs/packages/dsh-rcs-control/lib/index.js'
+    - id: rcs-kb
+      name: 'file:///D:/code/dsh4rcs/packages/dsh-rcs-kb/lib/index.js'

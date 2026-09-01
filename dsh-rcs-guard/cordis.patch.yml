@@ -1,0 +1,7 @@
+# 安全层。mode 改成 field 即进入赛场只读模式。
+- insert:
+    - id: rcs-guard
+      name: dsh-rcs-guard
+      config:
+        mode: dev
+        extraL2: []

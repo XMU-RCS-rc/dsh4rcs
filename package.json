@@ -1,0 +1,56 @@
+{
+  "name": "dsh4rcs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "RCS 战队的 DeepSeek Harness 插件套件",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "node packages/rcs-core/src/cli.ts",
+    "typecheck": "tsc -p tsconfig.base.json --noEmit",
+    "build": "node build.mjs",
+    "verify": "npm run typecheck && npm run build && npm run test",
+    "dsh": "node scripts/dsh.mjs",
+    "dsh:config": "node scripts/dsh.mjs --profile rcs-dev --dump-config",
+    "dsh:start": "node scripts/dsh.mjs --profile rcs-dev",
+    "dsh:install": "npm run build && node scripts/dsh.mjs plugin --profile rcs-dev add ./packages/dsh-rcs-control ./packages/dsh-rcs-kb",
+    "dsh:patch": "node scripts/dsh.mjs --profile web --patch ./dev.cordis.yml",
+    "dsh:patch:config": "node scripts/dsh.mjs --profile web --dump-config --patch ./dev.cordis.yml",
+    "feishu:check": "node scripts/feishu-check.mjs",
+    "kb:sync": "node scripts/kb-sync.mjs",
+    "kb:dry": "node scripts/kb-sync.mjs --dry",
+    "setup": "node scripts/setup.mjs",
+    "postinstall": "node scripts/link-host-packages.mjs"
+  },
+  "$scriptsComment": [
+    "全部经 scripts/dsh.mjs 调用，它锁定 0.1.0-rc.6 并绕开 dsh-launcher。",
+    "launcher（AppData\\Local\\Programs\\dsh-launcher）是 `npx @deepseek-ai/dsh web %*`：",
+    "  1. 不锁版本，会自己漂到新版；2. 硬编码 web 子命令，导致 `dsh plugin add` 彻底失效。",
+    "",
+    "dsh:start / dsh:config —— 用装好的 rcs-dev profile（日常用这个）",
+    "dsh:install          —— 重新构建并装进 rcs-dev profile（改了代码后跑）",
+    "kb:sync / kb:dry      —— 不启动 dsh 直接同步飞书资料；--dry 只遍历不抓正文，先看范围对不对",
+    "dsh:patch            —— 用 --patch overlay 挂到 web profile（临时调试用，不改 profile）",
+    "",
+    "换 dsh 版本前请重跑 npm run verify。"
+  ],
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
+    "@deepseek-ai/schemastery": "3.18.1",
+    "@types/node": "^22.10.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  },
+  "$depsComment": "三个 @deepseek-ai 包**精确锁版本**（无 ^）：它们只用于 typecheck 与外置解析，版本必须与运行时 dsh 一致，否则类型与实现会对不上。",
+  "engines": {
+    "node": ">=22"
+  },
+  "$verifyComment": "顺序是 typecheck -> build -> test：部分测试加载 packages/*/lib 的构建产物，先测后构建会拿到上一次的旧产物，报出令人困惑的失败。",
+  "$postinstallComment": "npm install 会把 node_modules/@deepseek-ai 下的宿主包联接变回普通目录，造成与 dsh 运行时的双实例（code mode 会因此崩溃并弄坏会话历史）。装完自动重建联接。"
+}

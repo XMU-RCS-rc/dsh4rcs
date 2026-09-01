@@ -1,0 +1,37 @@
+{
+  "$comment": [
+    "例程清单，来源：RCS_code/demo/RCS/请读我.txt 的『建议的例程学习顺序』step1~step8。",
+    "这是模板/培养路线相关内容，会随赛季调整 —— 属于需要队内补充维护的数据，代码不硬编码。",
+    "aliases 用于容纳实际文件名与计划名不一致的情况（如计划 motor_bus_test，实际 rmmotor_test）。"
+  ],
+  "source": "demo/RCS/请读我.txt",
+  "templateDir": "template/RCS_Template_F407/RCS/RCS_Template",
+  "examples": [
+    { "step": 3, "topic": "日志调试", "name": "freertos_kprintf_test" },
+    { "step": 3, "topic": "日志调试", "name": "uart_test" },
+    { "step": 3, "topic": "日志调试", "name": "oled_test" },
+    { "step": 3, "topic": "执行器", "name": "cylinder_bus_test", "aliases": ["cylinder_test"] },
+    { "step": 3, "topic": "执行器", "name": "motor_bus_test", "aliases": ["rmmotor_test"] },
+    { "step": 3, "topic": "执行器", "name": "actor_bus_test", "critical": true, "note": "核心抽象，缺此例程新人无法学会挂总线" },
+    { "step": 3, "topic": "控制算法", "name": "pid_test", "critical": true },
+    { "step": 4, "topic": "传感器", "name": "gpio_test" },
+    { "step": 4, "topic": "传感器", "name": "wit_gyro_test" },
+    { "step": 4, "topic": "传感器", "name": "dt35_filter_test" },
+    { "step": 4, "topic": "传感器", "name": "orth_encoder_test", "note": "依赖 rcs_tim 拆分为正交编码器接口" },
+    { "step": 4, "topic": "传感器", "name": "stp23_laser_test", "note": "R2 有 stp23.c 可移植" },
+    { "step": 5, "topic": "底盘", "name": "chassis_test", "critical": true, "note": "kin_chassis 已实现却无例程" },
+    { "step": 5, "topic": "底盘", "name": "gps_test", "aliases": ["gps_local", "gps_proxy"] },
+    { "step": 6, "topic": "机械臂", "name": "diff_test", "note": "kin_diff.h 是模板类，可直接写例程" },
+    { "step": 6, "topic": "机械臂", "name": "scara_test", "note": "R2 有 RCS_Scara 可移植" },
+    { "step": 7, "topic": "ROBOCON", "name": "upctrl_test" },
+    { "step": 7, "topic": "ROBOCON", "name": "chctrl_test" }
+  ],
+  "$pairingComment": [
+    "RCS_Support 下 .h 与 .c/.cpp 的配对检查。",
+    "headerOnly 是已核实的『有头无源属正常设计』白名单 —— 这是防误报的关键负样本：",
+    "kin_diff.h 是 template<typename TFLOAT> class diff（模板类必须 header-only）；",
+    "angle_loop.h 是内联实现。工具若把这两个报成缺失，即为误报。"
+  ],
+  "supportDir": "template/RCS_Template_F407/RCS/RCS_Support",
+  "headerOnly": ["kin_diff.h", "angle_loop.h"]
+}

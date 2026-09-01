@@ -1,0 +1,16 @@
+# 路径一律留空 —— 由 rcs-core/paths.ts 的解析链决定，
+# 这样别人 clone 下来不用改任何配置。详见 README。
+# Bundle 层 patch。已安装的 bundle 用包名引用，好让 Node 的模块解析器找到。
+#
+# cacheDir 留空是**故意的**：让它从 dsh-rcs-core 的 config/team.json 来，
+# 避免镜像路径散落在多处、改一处漏一处。
+#
+# appSecretEnv 只是**环境变量的名字**，不是密钥本身。
+# app_secret 永远不进这个文件 —— 它会随包发布。
+- insert:
+    - id: rcs-kb
+      name: dsh-rcs-kb
+      config:
+        teamConfig: ''
+        cacheDir: ''
+        appSecretEnv: 'FEISHU_APP_SECRET'

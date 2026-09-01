@@ -1,0 +1,8 @@
+# 路径一律留空 —— 由 rcs-core/paths.ts 的解析链决定，
+# 这样别人 clone 下来不用改任何配置。详见 README。
+# Bundle 层 patch。core 提供 ctx.rcs 服务，应排在其它 rcs 插件之前加载。
+- insert:
+    - id: rcs-core
+      name: dsh-rcs-core
+      config:
+        teamConfig: ''
