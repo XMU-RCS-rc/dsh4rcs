@@ -2,12 +2,12 @@
  * 命令行入口 —— 验证阶梯的 L2：**不启动 dsh 也能跑全部检查**。
  *
  * 用法：
- *   node packages/rcs-core/src/cli.ts layer-lint    D:/code/RCS_code
- *   node packages/rcs-core/src/cli.ts template-gap  D:/code/RCS_code
- *   node packages/rcs-core/src/cli.ts pairing       D:/code/RCS_code
- *   node packages/rcs-core/src/cli.ts hygiene       D:/code/RCS_code/R2
- *   node packages/rcs-core/src/cli.ts lint-embedded D:/code/RCS_code
- *   node packages/rcs-core/src/cli.ts all           D:/code/RCS_code
+ *   node packages/rcs-core/src/cli.ts layer-lint    ../RCS_code
+ *   node packages/rcs-core/src/cli.ts template-gap  ../RCS_code
+ *   node packages/rcs-core/src/cli.ts pairing       ../RCS_code
+ *   node packages/rcs-core/src/cli.ts hygiene       ../RCS_code/R2
+ *   node packages/rcs-core/src/cli.ts lint-embedded ../RCS_code
+ *   node packages/rcs-core/src/cli.ts all           ../RCS_code
  *
  * 加 --json 输出机器可读结果。
  */

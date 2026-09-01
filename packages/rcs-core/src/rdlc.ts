@@ -3,7 +3,7 @@
  *
  * ## 唯一真相是下位机源码
  *
- * 本模块严格照 `D:/code/RCS_code/demo/RCS/RCS_Support/src/rdlc.c` 实现，
+ * 本模块严格照 固件仓库的 `demo/RCS/RCS_Support/src/rdlc.c` 实现，
  * 并用队内上位机 `upper_host_cli/rdlc_cli.py` 生成的真实帧做跨实现基准
  * （测试夹具 `test/fixtures/rdlc-vectors.json`，非手写）。
  *

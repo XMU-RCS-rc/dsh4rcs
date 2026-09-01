@@ -225,7 +225,7 @@ function checkThemeCode(libRoot: string, rule: ThemeRule): Finding[] {
 
 /**
  * 对一个工程执行全部分层检查。
- * @param projectRoot 仓库根目录（如 `D:/code/RCS_code`）
+ * @param projectRoot 仓库根目录（如 `../RCS_code`）
  * @param config 分层规则，来自 `config/layer-rules.json`
  */
 export function lintLayers(projectRoot: string, config: LayerRulesConfig): CheckResult {
