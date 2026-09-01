@@ -107,7 +107,7 @@ ROBOCON 每年换主题、赛季内还反复改版。**「改了哪里」往往�
 ## 安装
 
 ```bash
-git clone https://github.com/bronyaza1chik/dsh4rcs.git
+git clone https://github.com/XMU-RCS-rc/dsh4rcs.git
 cd dsh4rcs
 npm install
 npm run setup          # 自检：Node / 依赖 / 固件仓库 / 工具链，缺什么直接给命令
