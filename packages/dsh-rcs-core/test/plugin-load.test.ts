@@ -74,10 +74,26 @@ describe.skipIf(!ready)('dsh-rcs-core 服务注册', () => {
     expect(ctx.rcs?.mayEnter('BR', 'L2')).toBe(true)
   })
 
-  it('工程路径与层次识别可用', () => {
-    expect(ctx.rcs?.projectRoot).toContain('RCS_code')
-    expect(ctx.rcs?.templateRoot).toContain('RCS_Template_F407')
+  /**
+   * 层次识别是**纯字符串逻辑**，不依赖固件仓库是否存在，任何机器上都该通过。
+   */
+  it('层次识别可用', () => {
     expect(ctx.rcs?.layerOf('RCS_Support/inc/gps.h')).toBe('RCS_Support')
+    expect(ctx.rcs?.layerOf('user/app_main.cpp')).toBe('user')
+  })
+
+  /**
+   * 工程路径解析要**先看固件仓库在不在**。
+   *
+   * 这条是 fresh-clone 验证抓出来的：原来无条件断言 `projectRoot` 含 'RCS_code'，
+   * 而固件仓库在本仓库之外 —— 队友 clone 下来若没放同级目录，这条必然失败，
+   * 让人误以为插件坏了。**依赖外部资源的断言必须带前置条件**。
+   */
+  it('固件仓库可解析时，工程路径正确', () => {
+    const root = ctx.rcs?.projectRoot ?? ''
+    if (!root) return // 本机没有固件仓库，跳过——这不是插件的问题
+    expect(root).toContain('RCS_code')
+    expect(ctx.rcs?.templateRoot).toContain('RCS_Template_F407')
   })
 
   it('倒计时与摘要不抛', () => {
