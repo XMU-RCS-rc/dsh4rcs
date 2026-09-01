@@ -1,0 +1,203 @@
+{
+  "$comment": [
+    "队内共享上下文。所有插件的单一真相来源 —— 赛季一换只改这里。",
+    "由 dsh-rcs-core 加载并经 ctx.rcs 暴露给其它插件。"
+  ],
+  "team": "RCS",
+  "season": "2027",
+  "event": "第二十六届 ROBOCON 竞技赛",
+  "theme": "女娲补天",
+  "themeAnnouncedAt": "2026-09",
+  "$rulesComment": "V0 是 ABU 原版翻译稿；官方前言明确「很快将有国内赛 V1 版发布」，届时用 scripts/docx-to-rules.mjs 转换后加目录即可。",
+  "rules": {
+    "root": "",
+    "currentVersion": "V0",
+    "abuHost": "Indonesia (Solo)",
+    "officialSite": "https://www.robocon.org.cn"
+  },
+  "$feishuComment": [
+    "飞书接入。**这里只放 app_id 与资源 token，绝不放 app_secret**。",
+    "app_secret 从环境变量 FEISHU_APP_SECRET 读取 —— 配置文件会进 git，密钥不能进。",
+    "",
+    "队内资料在**云盘共享文件夹**（不是知识库），因此走 drive 路线而非 wiki 路线。",
+    "sources 逐条列出授权范围，**只列电控相关目录**。",
+    "权限收敛靠的是这里（资源级协作者），不是 scope —— scope 是应用级的，",
+    "开了 drive:drive:readonly 也只能读到「把应用加为协作者」的那些目录。",
+    "每加一条 source，都要同步在飞书里把应用加为该目录协作者，两边必须对齐。",
+    "",
+    "cacheDir 是本地镜像：赛场网络差、飞书可能不可达，检索必须能离线跑，",
+    "所以同步与检索解耦，检索永远走本地镜像而不实时打 API。"
+  ],
+  "feishu": {
+    "appId": "cli_aa1bc5a8d8b89bce",
+    "appSecretEnv": "FEISHU_APP_SECRET",
+    "domain": "xmurcsrobot.feishu.cn",
+    "$sourcesComment": [
+      "kind: drive-folder | wiki-space。",
+      "token 从地址栏取：https://<域>.feishu.cn/drive/folder/<token>。",
+      "点进目标子目录再看地址栏 —— 根目录的 token 不是子目录的 token。"
+    ],
+    "sources": [
+      {
+        "kind": "drive-folder",
+        "label": "A02 电控组(通用)",
+        "owner": "陈煜楷",
+        "token": "El6JfkH8al6RGFdCEOlc4dvFnvg",
+        "$size": "递归 45 目录 / 29 docx / 26 文件"
+      },
+      {
+        "kind": "drive-folder",
+        "label": "A02 电控组(硬件)",
+        "owner": "陈煜楷",
+        "token": "LF1kfhGHplnZ2vdiqtHcQ1t1nqc",
+        "$size": "递归 3 目录 / 4 docx"
+      },
+      {
+        "kind": "drive-folder",
+        "label": "A02 软件组",
+        "owner": "满恒轩",
+        "token": "fldcnzfRJa4xOO9dkj4YPRLIYFg",
+        "$size": "递归 148 目录 / 803 文件 / 4 docx —— 以历年代码与安装包为主，靠 includeTypes 过滤"
+      },
+      {
+        "kind": "drive-folder",
+        "label": "A02 硬件组",
+        "owner": "陈煜楷",
+        "token": "KHyVfTaXYlnHK7dkRbLcI6rjnvf"
+      }
+    ],
+    "$candidatesComment": [
+      "软件组与硬件组是电控改组前的旧称，队里已确认纳入（2026-08-29）。",
+      "软件组体量大且以二进制为主：803 个 file 全靠 sync.excludeTypes 挡掉，",
+      "真正有检索价值的是「历年技术积累」下的少量文档。"
+    ],
+    "$syncComment": [
+      "⚠️ 实测（2026-08-29）：应用凭 tenant_access_token 已能读到整个共享文件夹",
+      "「RCS16 RC资料库」根目录 —— 没有任何人把它加为协作者，它自己就看得见，",
+      "其中包括「A03 公共账号密码 副本」这类不该进 AI 上下文的文档。",
+      "也就是说**飞书侧的资源级隔离在这里不成立**，范围收敛只能落在我们自己这一层：",
+      "同步器必须从 sources 里的 token 起步向下遍历，且拒绝任何不在白名单子树内的 token。",
+      "这比服务端 ACL 弱 —— 它防的是「我们自己写错代码」，防不住「有人直接拿凭证调 API」。",
+      "真正的修复在飞书那边（见 feishu-setup.md 第三节），建议同时推进。"
+    ],
+    "sync": {
+      "allowlistOnly": true,
+      "includeTypes": ["docx", "doc", "sheet"],
+      "excludeTypes": ["file", "shortcut", "bitable", "mindnote", "slides"],
+      "maxDepth": 12
+    },
+    "$rootComment": [
+      "根目录「RCS16 RC资料库」token = fldcnmQoWyB4WOsLAQK86rhdEJO。",
+      "**刻意不放进 sources**：它下面含机械/视觉/算法/运营/赛务，且目录描述写着「财务」，",
+      "远超电控范围。授权到根目录等于把全队资料都摊给模型 —— 按目录逐个授权。",
+      "这里记下来只为诊断脚本能解释「为什么读不到」。"
+    ],
+    "rootFolderToken": "fldcnmQoWyB4WOsLAQK86rhdEJO",
+    "cacheDir": "",
+    "syncPageSize": 50,
+    "$minIntervalComment": "相邻请求最小间隔(ms)。实测 300 个目录的全量遍历约 125 秒，成本全在目录列举而非抓正文。飞书配额宽裕，嫌慢可下调；若报频控(99991400)就上调。",
+    "minIntervalMs": 120
+  },
+  "$robotsComment": "本届只有两台机器人，角色由规则第 11 节固定：TR 可手动或自动，BR 必须全自动。",
+  "robots": [
+    {
+      "id": "TR",
+      "name": "搬运机器人",
+      "autonomy": "manual-or-auto",
+      "zones": [
+        "ground",
+        "handover"
+      ],
+      "carryLimit": 3,
+      "clause": "11.2"
+    },
+    {
+      "id": "BR",
+      "name": "建筑机器人",
+      "autonomy": "full-auto-required",
+      "zones": [
+        "handover",
+        "L1",
+        "L2"
+      ],
+      "carryLimit": 2,
+      "clause": "11.3"
+    }
+  ],
+  "firmware": {
+    "repo": "",
+    "template": "template/RCS_Template_F407",
+    "legacy": "",
+    "mcu": "stm32f407",
+    "framework": "hal",
+    "rtos": "freertos",
+    "lang": "cxx",
+    "layers": [
+      "RCS_HAL",
+      "RCS_Module",
+      "RCS_Support",
+      "RCS_Template",
+      "user"
+    ],
+    "$uartComment": "外设预算已定，勿随意改动",
+    "uart": {
+      "usart1": "vision",
+      "usart2": "host-rdlc(115200 8N1, PD5/PD6)",
+      "usart6": "sbus"
+    },
+    "actuators": [
+      "rm3508",
+      "rm2006",
+      "gm6020",
+      "vesc",
+      "cylinder"
+    ],
+    "$chassisComment": "每年底盘全新，这里只记当前形态；kin_chassis 支持 4舵轮 与 4全向轮/麦轮",
+    "chassis": "tbd"
+  },
+  "$milestonesComment": "date 为 null 表示官方尚未公布具体日期。规则 13.3/13.4：变更以官网发布为准。",
+  "milestones": [
+    {
+      "id": "theme",
+      "label": "主题与规则 V0 发布",
+      "date": "2026-09-01",
+      "done": true
+    },
+    {
+      "id": "rules-v1",
+      "label": "国内赛规则 V1 发布",
+      "date": null,
+      "done": false
+    },
+    {
+      "id": "mech-freeze",
+      "label": "机械方案定版",
+      "date": null,
+      "done": false
+    },
+    {
+      "id": "integration",
+      "label": "整车联调",
+      "date": null,
+      "done": false
+    },
+    {
+      "id": "regional",
+      "label": "分区赛/复赛",
+      "date": null,
+      "done": false
+    },
+    {
+      "id": "final",
+      "label": "国内决赛（不晚于此日）",
+      "date": "2027-07-15",
+      "done": false
+    },
+    {
+      "id": "abu",
+      "label": "ABU Robocon 2027（印尼梭罗）",
+      "date": null,
+      "done": false
+    }
+  ]
+}

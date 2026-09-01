@@ -1,0 +1,11 @@
+{
+  "name": "@rcs/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "RCS 专属 UI 的视图模型层 —— 纯投影，零依赖，供工具呈现与客户端面板共用",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "@rcs/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "RCS 工程检查的纯逻辑核心 —— 零 dsh 依赖，可独立单元测试",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

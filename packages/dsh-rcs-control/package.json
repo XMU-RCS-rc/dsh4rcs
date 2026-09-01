@@ -1,0 +1,29 @@
+{
+  "name": "dsh-rcs-control",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "RCS 电控工程检查工具集（dsh 插件）",
+  "main": "lib/index.js",
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "keywords": [
+    "dsh-plugin"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/schemastery": "*"
+  },
+  "$comment": [
+    "main 指向构建产物 lib/index.js —— 装进 profile 后 src/ 的相对路径解析不到。",
+    "private 设为 false 以便 pnpm 能把本目录 link 进 profile；不发布到公网 npm。"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "dsh-rcs-guard",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "RCS 危险操作安全层（dsh 插件）",
+  "main": "lib/index.js",
+  "files": ["lib", "cordis.patch.yml"],
+  "keywords": ["dsh-plugin"],
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/schemastery": "*"
+  }
+}

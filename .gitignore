@@ -1,0 +1,42 @@
+# --- Node / 构建产物 ---
+node_modules/
+dist/
+lib/
+*.tsbuildinfo
+coverage/
+
+# --- 编辑器 / 个人配置（R2 的教训：21 个 .uvguix 入库）---
+*.uvguix*
+*.uvoptx
+.vscode/
+.idea/
+
+# --- 嵌入式工程产物 ---
+OBJ/
+Objects/
+Listings/
+build/
+DebugConfig/
+*.hex
+*.bin
+*.axf
+*.htm
+
+# --- 索引 / 备份残留 ---
+.tags*
+*.orig
+*.acl-old
+*.pre-final
+.codex-backup/
+__pycache__/
+
+# --- 飞书知识库本地镜像（内容属队内资料，不入库）---
+data/kb-cache/
+
+# --- 凭据（飞书 app_secret 等，绝不入库）---
+.env
+.env.local
+secrets.*
+
+# --- 队友各自的本地覆盖（如需要）---
+config/team.local.json

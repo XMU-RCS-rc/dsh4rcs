@@ -1,0 +1,13 @@
+# 路径一律留空 —— 由 rcs-core/paths.ts 的解析链决定，
+# 这样别人 clone 下来不用改任何配置。详见 README。
+# Bundle 层 patch。已安装的 bundle 用包名引用，好让 Node 的模块解析器找到。
+#
+# season / constraintsVersion 留空是**故意的**：让它们从 dsh-rcs-core 的
+# config/team.json 来，避免同一个年份散落在多处、换赛季时漏改。
+- insert:
+    - id: rcs-rules
+      name: dsh-rcs-rules
+      config:
+        rulesRoot: ''
+        season: ''
+        constraintsVersion: ''

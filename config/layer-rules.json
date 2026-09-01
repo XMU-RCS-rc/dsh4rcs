@@ -1,0 +1,88 @@
+{
+  "$comment": [
+    "分层红线规则。工程通用，不随赛季/主题变化。",
+    "规则依据：RCS_Support 层必须能在 PC 上单元测试，故不得依赖芯片 HAL 与 RTOS。",
+    "校准依据（2026-08 实测）：rcs_private_config.h 直接 include 了 stm32f4xx_hal.h / FreeRTOS.h /",
+    "task.h / event_groups.h，因此它本身是污染源，不能进 allowlist；rcs_types.h 无任何 include，干净。",
+    "这解释了为什么 RCS_Support/test 下目前只有 angle_loop_test.cpp —— 只有它不依赖 vendor 头。"
+  ],
+  "projectRoot": "template/RCS_Template_F407",
+  "libRoot": "template/RCS_Template_F407/RCS",
+  "layers": [
+    {
+      "layer": "RCS_HAL",
+      "dir": "RCS_HAL",
+      "order": 1,
+      "description": "外设抽象层，允许依赖 HAL 与 RTOS"
+    },
+    {
+      "layer": "RCS_Module",
+      "dir": "RCS_Module",
+      "order": 2,
+      "description": "执行器与传感器层"
+    },
+    {
+      "layer": "RCS_Support",
+      "dir": "RCS_Support",
+      "order": 3,
+      "description": "纯算法层，必须可在 PC 上单元测试"
+    },
+    {
+      "layer": "RCS_Template",
+      "dir": "RCS_Template",
+      "order": 4,
+      "description": "例程，不参与实车编译"
+    },
+    {
+      "layer": "user",
+      "dir": "user",
+      "order": 5,
+      "description": "当年主题相关，赛季结束可丢弃"
+    }
+  ],
+  "purityRules": [
+    {
+      "id": "support-no-vendor",
+      "layer": "RCS_Support",
+      "severity": "error",
+      "transitive": true,
+      "forbidHeaders": [
+        "^stm32.*\\.h$",
+        "^cmsis_.*\\.h$",
+        "^core_cm.*\\.h$",
+        "^FreeRTOS\\.h$",
+        "^task\\.h$",
+        "^queue\\.h$",
+        "^semphr\\.h$",
+        "^timers\\.h$",
+        "^event_groups\\.h$",
+        "^portmacro\\.h$"
+      ],
+      "allowHeaders": ["rcs_types.h"],
+      "message": "RCS_Support 是纯算法层，不得依赖芯片 HAL 或 RTOS —— 破了就无法做 PC 单元测试"
+    }
+  ],
+  "$actorRuleComment": "执行器必须继承 rcs_actor 并挂入 rcs_actor_bus，从制度上避免控制不连续（见 rcs_actor_bus.h 原注释）",
+  "actorRule": {
+    "id": "module-actor-base",
+    "severity": "error",
+    "dir": "RCS_Module/src/rcs_actor",
+    "baseClass": "rcs_actor",
+    "exempt": ["rcs_actor_bus.cpp"],
+    "message": "RCS_Module/rcs_actor 下的执行器必须继承 rcs_actor 基类"
+  },
+  "$themeRuleComment": "主题相关代码只能进 user/。RCS/ 是跨赛季资产。patterns 随赛季追加，属于比赛相关内容。",
+  "themeRule": {
+    "id": "lib-no-theme-code",
+    "severity": "warn",
+    "confineTo": "user",
+    "patterns": [
+      "COMPETITION",
+      "PROVINCE",
+      "^R1_",
+      "^R2_",
+      "^R3_"
+    ],
+    "message": "疑似主题/赛季相关代码出现在跨赛季库中，应移入 user/"
+  }
+}

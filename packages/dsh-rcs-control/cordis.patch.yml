@@ -1,0 +1,10 @@
+# 路径一律留空 —— 由 rcs-core/paths.ts 的解析链决定，
+# 这样别人 clone 下来不用改任何配置。详见 README。
+# Bundle 层的 patch。已安装的 bundle 用**包名**引用，好让 Node 的模块解析器找到。
+# （本地开发的 --patch overlay 才用绝对路径，见仓库根的 dev.cordis.yml）
+- insert:
+    - id: rcs-control
+      name: dsh-rcs-control
+      config:
+        projectRoot: ''
+        configDir: ''
