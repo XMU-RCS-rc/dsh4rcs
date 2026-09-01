@@ -103,6 +103,33 @@ if (existsSync(rules)) {
   console.log(warn(`没有规则数据（${rules}）—— 用 rcs_rule_import 导入规则书`))
 }
 
+// ---------- 5.5 生成 L3 调试 overlay ----------
+// dev.cordis.yml 必须写绝对的 file:/// URL —— Windows 上 Node 的 ESM 加载器
+// 拒收裸盘符路径（ERR_UNSUPPORTED_ESM_URL_SCHEME: Received protocol 'd:'）。
+// 所以它天然是机器相关的、不进版本控制，这里按本机路径生成。
+const overlay = join(REPO, 'dev.cordis.yml')
+if (!existsSync(overlay)) {
+  const url = (p) => `file:///${join(REPO, 'packages', p, 'lib', 'index.js').replace(/\\/g, '/')}`
+  const lines = [
+    '# 本地调试用的 patch overlay（由 npm run setup 生成，已 gitignore）。',
+    '#',
+    '#   npm run dsh:patch          # 带此 overlay 启动',
+    '#   npm run dsh:patch:config   # 只打印配置树，排错首选',
+    '#',
+    '# name 必须是 file:/// URL，不能是裸盘符路径 —— Windows 上 Node 的 ESM',
+    '# 加载器会报 ERR_UNSUPPORTED_ESM_URL_SCHEME。注意是三个斜杠。',
+    '# 指向 lib 而非 src：dsh 没有 TypeScript 源码加载器。',
+    '- insert:',
+    '    - id: rcs-control',
+    `      name: '${url('dsh-rcs-control')}'`,
+    '    - id: rcs-kb',
+    `      name: '${url('dsh-rcs-kb')}'`,
+    '',
+  ]
+  writeFileSync(overlay, lines.join('\n'))
+  console.log('\n[5.5] 已生成 dev.cordis.yml（L3 调试用，按本机路径）')
+}
+
 // ---------- 6. 工具链 ----------
 console.log('\n[6/6] 本机工具链（可选，缺了只影响对应工具）')
 for (const t of probeToolchain(nodeDeps)) {
