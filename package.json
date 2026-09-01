@@ -23,7 +23,8 @@
     "feishu:check": "node scripts/feishu-check.mjs",
     "kb:sync": "node scripts/kb-sync.mjs",
     "kb:dry": "node scripts/kb-sync.mjs --dry",
-    "setup": "node scripts/setup.mjs"
+    "setup": "node scripts/setup.mjs",
+    "postinstall": "node scripts/link-host-packages.mjs"
   },
   "$scriptsComment": [
     "全部经 scripts/dsh.mjs 调用，它锁定 0.1.0-rc.6 并绕开 dsh-launcher。",
@@ -50,5 +51,6 @@
   "engines": {
     "node": ">=22"
   },
-  "$verifyComment": "顺序是 typecheck -> build -> test：部分测试加载 packages/*/lib 的构建产物，先测后构建会拿到上一次的旧产物，报出令人困惑的失败。"
+  "$verifyComment": "顺序是 typecheck -> build -> test：部分测试加载 packages/*/lib 的构建产物，先测后构建会拿到上一次的旧产物，报出令人困惑的失败。",
+  "$postinstallComment": "npm install 会把 node_modules/@deepseek-ai 下的宿主包联接变回普通目录，造成与 dsh 运行时的双实例（code mode 会因此崩溃并弄坏会话历史）。装完自动重建联接。"
 }

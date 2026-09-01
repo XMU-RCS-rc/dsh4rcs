@@ -130,6 +130,24 @@ if (!existsSync(overlay)) {
   console.log('\n[5.5] 已生成 dev.cordis.yml（L3 调试用，按本机路径）')
 }
 
+// ---------- 5.6 宿主包实例统一 ----------
+// 插件以 link: 装进 profile，而 Node 按**真实路径**解析模块 —— 会先撞到本仓库
+// 自己的 node_modules，拿到与宿主不同的那一份 dsh-tools。
+// dsh 的 code mode 用普通 Symbol()（不是 Symbol.for）做键，实例私有，
+// 于是宿主读不到 → "Cannot read properties of undefined (reading 'prepare')"，
+// 而且那一轮会在工具调用中途崩溃，把整个会话的历史弄坏（之后每轮都被 API 拒绝）。
+// 详见 scripts/link-host-packages.mjs 的文件头。
+console.log('\n[5.6] 宿主包实例')
+try {
+  const { execFileSync } = await import('node:child_process')
+  execFileSync(process.execPath, [join(REPO, 'scripts', 'link-host-packages.mjs'), '--check'], { stdio: 'pipe' })
+  console.log(ok('插件与宿主使用同一份宿主包'))
+} catch {
+  console.log(warn('存在双实例风险 —— 跑 `node scripts/link-host-packages.mjs` 修复'))
+  console.log('       npm install 之后要重跑一次：装依赖会把联接变回普通目录。')
+  blocking++
+}
+
 // ---------- 6. 工具链 ----------
 console.log('\n[6/6] 本机工具链（可选，缺了只影响对应工具）')
 for (const t of probeToolchain(nodeDeps)) {
