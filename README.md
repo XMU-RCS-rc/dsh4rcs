@@ -1,218 +1,289 @@
 # dsh4rcs
 
-厦门大学 RCS 战队的 DeepSeek Harness 插件套件 —— 面向 ROBOCON 2027「女娲补天」赛季的电控方向。
+厦门大学 RCS 战队的 [DeepSeek Harness](https://github.com/deepseek-ai) 插件套件 —— 面向 ROBOCON 2027「女娲补天」赛季的电控方向。
 
-5 个插件 / 20 个工具 / 378 个测试全通过。规则查询、队内资料离线检索、工程分层与嵌入式规范检查、协议解析、构建与烧录均已可用；总线映射、日志分析、UI 面板留了接口。
+把队内散落在文档、口头约定和老队员脑子里的东西，变成 Agent 能直接调用、且**可验证**的工具：规则条款查得到出处，工程规范能自动检查，队内资料赛场断网也能检索。
 
-## 设计要点
+**5 个插件 · 20 个工具 · 378 个测试全通过**
 
-**核心 / UI / 适配层三分。**
+---
 
-```
-packages/rcs-core/          纯 TypeScript 检查逻辑，零 dsh 依赖
-packages/rcs-ui/            RCS 专属 UI 的视图模型，纯投影，零依赖
-packages/dsh-rcs-control/   dsh 适配层，只做 defineTool + register —— 刻意做薄
-```
+## 目录
 
-本机 dsh launcher 是 `npx @deepseek-ai/dsh web %*`，**不锁版本**（实测会自己漂到新版）。preview 期 API 变动只会打到薄薄的适配层，几百行检查逻辑与 UI 投影不受影响；而且绝大部分开发与测试**根本不需要启动 dsh**。
+- [能做什么](#能做什么)
+- [环境要求](#环境要求)
+- [安装](#安装)
+- [使用](#使用)
+- [配置](#配置)
+- [开发](#开发)
+- [架构](#架构)
+- [排错](#排错)
+- [路线图](#路线图)
 
-## 当前状态
+---
 
-### 已实现并验证
+## 能做什么
 
-| 能力 | 说明 | 实测 |
+### 规则（`dsh-rcs-rules`）
+
+ROBOCON 每年换主题、赛季内还反复改版。**「改了哪里」往往比「写了什么」更要紧** —— 漏看一条改动可能让整套机构返工。
+
+| 工具 | 作用 |
+|---|---|
+| `rcs_rule_lookup` | 查条款，返回**条款号 + 版本号 + 原文** |
+| `rcs_rule_diff` | 版本对比，列出新增/删除/修改条款 |
+| `rcs_rule_check` | 拿设计描述比对约束，指出疑似违规，每条带条款号 |
+| `rcs_rule_import` | 导入新规则书（`.docx` → 结构化条款），跨赛季入口 |
+| `rcs_rule_versions` | 列出规则库现有的赛季与版本 |
+
+工具**只检索、不解读**。规则理解错的代价是整套方案返工，所以最终判断留给人，最终解释权在裁判组。
+
+### 队内资料（`dsh-rcs-kb`）
+
+| 工具 | 作用 |
+|---|---|
+| `rcs_kb_search` | **离线**检索飞书资料镜像，返回片段 + 原文链接 |
+| `rcs_kb_status` | 镜像状态：上次同步、文档数、授权范围 |
+| `rcs_kb_sync` | 同步飞书资料到本地镜像（L1，赛场禁止） |
+
+**同步与检索解耦。** 赛场网络差、飞书随时可能不可达，而那时最需要查资料 —— 所以检索永远读本地镜像，绝不实时打 API。
+
+### 工程检查（`dsh-rcs-control`）
+
+跨赛季的分层架构与执行器软总线是队里的核心资产，但原本只靠 `请读我.txt` 的口头约定维持。**把约定变成工具检查**，是插件能给电控组的最大价值。
+
+| 工具 | 作用 |
+|---|---|
+| `rcs_lint_layer` | 分层红线：`RCS_Support` 是否依赖 HAL/RTOS（**含传递依赖**）、执行器是否继承 `rcs_actor` |
+| `rcs_lint_embedded` | 嵌入式规范：中断内禁 printf/malloc、FromISR 变体、volatile、**急停回路是否可被软件旁路** |
+| `rcs_angle_loop_check` | 舵轮角度回环，重点查弧度/角度单位错配 |
+| `rcs_kinematics_check` | 底盘运动学：未初始化返回、最短路缺失、运算符优先级 |
+| `rcs_rdlc_decode` | 解析 RDLC 报文（CRC16-MODBUS）与命令/反馈载荷 |
+| `rcs_template_gap` | 例程缺口比对 |
+| `rcs_repo_hygiene` | `.gitignore` 缺失、`*.uvguix`、编译产物、编辑残留 |
+
+> 这些检查**已经在队内代码里查出三个真实缺陷**，其中两个属于沉默失败（编译通过、运行不报错，只在赛场上表现为「今天车有点怪」）。详见 [`FEATURES.md`](./FEATURES.md) 附录。
+
+### 工具链（`dsh-rcs-control`）
+
+| 工具 | 危险度 | 作用 |
 |---|---|---|
-| `layer-lint` | 分层红线：RCS_Support 是否依赖 HAL/RTOS（**含传递依赖**）、执行器是否继承 `rcs_actor`、主题代码是否混进 `RCS/` | 14 条发现 |
-| `template-gap` | 18 个计划例程 vs 实际文件 | 7/18 |
-| `support-pairing` | `.h` 是否有对应 `.c/.cpp` | 无误报 |
-| `repo-hygiene` | `.gitignore` 缺失、`*.uvguix`、编译产物、编辑残留 | R2 有 21 个 uvguix |
-| `rule-diff` | 规则版本对比的**纯逻辑** | 已实现并测试 |
-| **工具呈现 UI** | `presentCall` / `presentResult` / `presentationMeta` | 已接入 |
+| `rcs_toolchain_status` | L0 | 探测 Keil / CMake / Python / WSL，缺什么给安装命令 |
+| `rcs_support_test` | **L1** | PC 单元测试（CMake + gtest），**不需要硬件** —— CI 的核心 |
+| `rcs_fw_build` | **L1** | Keil UV4 构建，编译错误结构化返回 |
+| `rcs_fw_flash` | **L2** | SWD 烧录，**默认只校验不写入** |
 
-### RCS 专属 UI
+### 安全层（`dsh-rcs-guard`）
 
-**Tier 1 · 工具呈现（已接入）** —— 任何 UI 都吃得到，无需前端代码：
+三级危险度，横切生效，无工具：
 
-- findings 天然是「文件 + 行号 + 说明」，直接映射到 dsh 的**搜索卡片**，白拿按文件折叠与点击跳转
-- 数据经 `output.presentationMeta` 落到会话日志，**回放历史会话时卡片依然完整**
-- **污染源排名**：把传递依赖链的「第一跳」聚合，回答"先修哪个文件能一次解锁最多下游文件"。实测把 `rcs_private_config.h` 排为首位
-- 五个工程层次各有语义色；纯文本 UI 用 `TONE_MARK` 记号，黑白终端也能区分严重级别
+- **L0 只读** —— 放行
+- **L1 本机写** —— 开发放行，赛场拒绝
+- **L2 物理动作**（烧录、电机使能、气路动作、总线下发）—— 开发需人工确认，**赛场一律拒绝**
 
-**Tier 2 · 客户端面板（留接口）** —— `packages/rcs-ui/src/panel-contract.ts`：
+赛场模式另注册不可绕过的 `ctx.tools.guard()`。启动时打印生效策略 —— 安全配置最怕「以为开了其实没开」。
 
-工程健康分、例程完成度（按 step1~step8）、污染源排名、赛季倒计时。数据契约与刷新策略已定，React 组件待实现。契约先定的原因：Tier 1 与 Tier 2 共用同一套投影函数，不会两处各算一遍还结论不一致。
+> 规则强制要求红色急停按钮。**软件停止永远不能替代硬件急停、驱动使能线和限位保护。**
 
-### 留了接口，待补内容
+---
 
-| 接口 | 位置 | 需要补什么 |
-|---|---|---|
-| `RuleSource` | `rcs-core/src/rule-diff.ts` | 2026 年 V1.0~V4 规则原文 + 条款解析器 |
-| `RcsDashboardSource` | `rcs-ui/src/panel-contract.ts` | Node 侧快照与订阅；React 面板组件 |
-| `RCS_BRAND` | `rcs-ui/src/theme.ts` | **真实品牌色**（现为中性占位，我不知道 RCS 品牌规范，没有编造） |
-| `config/template-manifest.json` | 例程清单 | 随赛季调整 |
-| `config/layer-rules.json` → `themeRule.patterns` | 主题代码特征 | 每赛季追加 |
+## 环境要求
 
-两个占位实现（`UnimplementedRuleSource` / `UnimplementedDashboardSource`）都会**明确抛错**，不会静默返回空结果假装通过。
+| 必需 | 说明 |
+|---|---|
+| Node.js ≥ 22 | 用到原生 TypeScript 剥离 |
+| DeepSeek Harness `0.1.0-rc.6` | 版本必须与 profile 一致，见[排错](#dsh-版本必须锁死) |
 
-## 别人怎么装（三步）
+| 可选 | 缺了会怎样 |
+|---|---|
+| RCS 固件仓库 | 工程检查与构建烧录不可用；规则与资料检索不受影响 |
+| Keil MDK | `rcs_fw_build` 不可用 |
+| CMake（Windows 或 WSL） | `rcs_support_test` 不可用 |
+| Python + pyOCD | `rcs_fw_flash` 不可用 |
+| 飞书应用凭证 | `rcs_kb_*` 不可用 |
+
+---
+
+## 安装
 
 ```bash
-git clone <仓库地址> dsh4rcs
+git clone https://github.com/bronyaza1chik/dsh4rcs.git
 cd dsh4rcs
 npm install
-npm run setup          # 自检：Node 版本 / 依赖 / 固件仓库 / 工具链，缺什么直接给命令
+npm run setup          # 自检：Node / 依赖 / 固件仓库 / 工具链，缺什么直接给命令
 npm run verify         # typecheck → build → test
 npm run dsh:install    # 装进 dsh 的 rcs-dev profile
 npm run dsh:start      # 等打印出 dsh web 地址再开浏览器
 ```
 
-### 路径不用改
+`npm run setup` 只读不写（除非加 `--write`），逐项告诉你还缺什么以及怎么补。
 
-仓库里**没有任何绝对路径**。插件配置默认全部留空，运行时按这条链解析：
+### 推荐目录布局
+
+固件仓库放在**同级目录**即可自动发现，无需任何配置：
+
+```
+code/
+├── dsh4rcs/       ← 本仓库
+└── RCS_code/      ← 固件仓库
+```
+
+放在别处就设环境变量：
+
+```powershell
+[Environment]::SetEnvironmentVariable('RCS_CODE_ROOT','E:/path/to/RCS_code','User')
+```
+
+---
+
+## 使用
+
+启动后在对话里直接问。**会话预设要选「标准模式」** —— PTC（Code）模式在 rc.6 下有已知问题，见[排错](#工具调用报-cannot-read-properties-of-undefined-reading-prepare)。
+
+```
+这个赛季的主题和两台机器人的限制是什么
+查规则里关于气压上限的条款
+CAN 总线怎么配？查一下队内资料
+检查 RCS_code 的分层红线
+跑一下 PC 单元测试
+```
+
+### 不启动 dsh 也能用
+
+```bash
+npm run check -- all ../RCS_code       # 工程检查，退出码可直接当 CI 门禁
+npm run feishu:check                   # 飞书三层权限诊断
+npm run kb:dry                         # 只遍历不抓正文，先确认授权范围
+npm run kb:sync                        # 增量同步队内资料
+```
+
+---
+
+## 配置
+
+`config/team.json` 是**唯一真相** —— 赛季一换只改这里，代码不用动。
+
+路径字段默认留空，运行时按这条链解析：
 
 ```
 工具参数 → ctx.rcs 共享配置 → 插件配置 → 环境变量 → 自动发现 → 明确报错
 ```
 
-- **仓库内的东西**（`config/`、`data/rules/`）从模块自身位置推出，永远对。
-- **固件仓库 `RCS_code`** 在仓库之外，按顺序找：`config/team.json` 的
-  `firmware.repo` → 环境变量 `RCS_CODE_ROOT` → 与本仓库**同级**的 `../RCS_code`。
-  自动发现会检查目录里有没有 `template`/`demo`/`upper_host_cli`/`R2` 这些标志物，
-  **认不出就报错并列出找过哪些路径**，绝不指向一个碰巧同名的空目录。
+解析不到时会**列出找过哪些路径**，而不是猜一个然后给出莫名其妙的结果。
 
-所以最省事的布局是：
+### 飞书凭证
 
-```
-D:/code/
-├── dsh4rcs/       ← 本仓库
-└── RCS_code/      ← 固件仓库（同级即可，无需配置）
-```
-
-放在别处就设一个环境变量：
-
-```bash
-# Windows PowerShell
-[Environment]::SetEnvironmentVariable('RCS_CODE_ROOT','E:/somewhere/RCS_code','User')
-```
-
-### 飞书凭证要各自配
-
-`config/team.json` 里只有 `appId` 和授权目录清单，**没有 app_secret**。
-每个人自己设环境变量：
+`config/team.json` 里只有 `appId` 和授权目录清单，**没有 app_secret**。每个人自己设环境变量：
 
 ```powershell
 [Environment]::SetEnvironmentVariable('FEISHU_APP_SECRET','你的secret','User')
 ```
 
-设完**重开终端**。用 `npm run feishu:check` 三层诊断（scope / 协作者 / 实际范围）。
-不配飞书也能用，只是 `rcs_kb_*` 三个工具不可用，其余 17 个照常。
+设完**重开终端**。诊断用 `npm run feishu:check`，它分三层报告（scope / 协作者 / 实际范围），并且**只推荐只读权限**。
 
-### 一个必须知道的坑：dsh 版本要锁死
+详细步骤见 [`feishu-setup.md`](./feishu-setup.md)。
 
-dsh 的 profile 用 pnpm 安装，而 `dsh-web-app@0.1.0-rc.6` 用 `^0.1.0-rc.6`
-声明客户端依赖 —— pnpm 会解析到更新的 rc.8，于是**服务端 rc.6、前端 rc.8**。
-rc.8 的前端在 `mountApp` 里 `await ctx.inject(['uiRenderer'])`，而 rc.6 这一代
-没有模块提供该服务；cordis 的 inject 是**无限等待且不报错**，
-结果就是网页端永远停在 "Loading plugins…"，控制台里连报错都没有。
+---
 
-`npm run dsh:install` 之后如果遇到这个现象，在
-`~/.dsh/profiles/rcs-dev/pnpm-workspace.yaml` 里把全部 `@deepseek-ai/*`
-钉到 `0.1.0-rc.6` 再 `pnpm install`。
-
-> **pnpm 11 起 overrides 只认 `pnpm-workspace.yaml`**，写在 `package.json`
-> 的 `pnpm.overrides` 会被静默忽略（只有一行 WARN）。
-
-
-## 快速开始
+## 开发
 
 ```bash
-npm install
-npm run verify        # typecheck + test + build，一条命令走完
+npm run verify      # typecheck → build → test（顺序不能改，见下）
+npm run typecheck   # 对着真实 dsh 类型定义检查适配层
+npm run build       # esbuild 多插件构建，检查宿主包泄漏
+npm run test        # 378 个测试
 ```
 
-分开跑：
+> `verify` 的顺序是 typecheck → **build** → test：部分测试加载 `packages/*/lib` 的构建产物，先测后构建会拿到上一次的旧产物，报出令人困惑的失败。
+
+### 验证阶梯
+
+每一层都能抓到下一层抓不到的东西：
+
+| 级别 | 做什么 | 需要 dsh |
+|---|---|---|
+| L0 | typecheck，对着 `dsh-tools` 的 `.d.ts` | ❌ |
+| L1 | 单元测试（真实工程与真实规则数据，不是 mock） | ❌ |
+| L2 | CLI 冒烟 | ❌ |
+| L2.5 | 桩 ctx / **真实 cordis** 跑 `apply` | ❌ |
+| L3 | `npm run dsh:patch` 挂 overlay 加载 | ✅ |
+| L4 | `npm run dsh:install` 装进 profile | ✅ |
+
+---
+
+## 架构
+
+```
+packages/
+├── rcs-core/            纯逻辑，零 dsh 依赖 —— 所有判断都在这
+├── rcs-ui/              视图模型，纯投影，零依赖
+├── dsh-rcs-core/        Service 插件，提供 ctx.rcs
+├── dsh-rcs-guard/       安全层
+├── dsh-rcs-control/     工程检查、协议解析、构建烧录
+├── dsh-rcs-rules/       规则版本追踪与查询
+└── dsh-rcs-kb/          飞书资料同步与离线检索
+```
+
+**适配层刻意做薄。** dsh 处于 developer preview，API 变动只打到适配层，几百行判断逻辑与 UI 投影不受影响；而且绝大部分开发与测试**根本不用启动 dsh**。
+
+设计背景见 [`dsh-rcs-plugin-design.md`](./dsh-rcs-plugin-design.md)，完整功能清单见 [`FEATURES.md`](./FEATURES.md)，使用手册见 [`USAGE.md`](./USAGE.md)。
+
+---
+
+## 排错
+
+### dsh 版本必须锁死
+
+dsh 的 profile 用 pnpm 安装，而 `dsh-web-app@0.1.0-rc.6` 用 `^0.1.0-rc.6` 声明客户端依赖 —— pnpm 会解析到更新的 rc.8，造成**服务端 rc.6、前端 rc.8**。rc.8 的前端在 `mountApp` 里 `await ctx.inject(['uiRenderer'])`，而 rc.6 这一代没有模块提供该服务；cordis 的 inject 是**无限等待且不报错**，结果是网页端永远停在 "Loading plugins…"，控制台里连报错都没有。
+
+修法：在 `~/.dsh/profiles/rcs-dev/pnpm-workspace.yaml` 里把全部 `@deepseek-ai/*` 钉到 `0.1.0-rc.6`，然后 `pnpm install`。
+
+> **pnpm 11 起 overrides 只认 `pnpm-workspace.yaml`**，写在 `package.json` 的 `pnpm.overrides` 会被静默忽略（只有一行 WARN）。
+
+### 工具调用报 `Cannot read properties of undefined (reading 'prepare')`
+
+宿主包出现了多个实例。dsh 的 loader 从 profile 根解析插件名，`ctx.tools` 因此来自 profile 的 `dsh-tools`；而 `dsh-agent-loop` 来自 npx 缓存，用**自己那份**的 `Symbol()` 去读 `ctx.tools[TOOL_RUNTIME_SCHEDULER]`。该符号是普通 `Symbol()` 而非 `Symbol.for()`，实例私有，于是取回 `undefined`。
 
 ```bash
-npm run typecheck     # 对着真实 dsh 类型定义检查适配层
-npm run test          # 377 个测试
-npm run build         # 产出 packages/dsh-rcs-control/lib/index.js
-
-# 不启动 dsh 的命令行冒烟
-npm run check -- all ../RCS_code
-npm run check -- hygiene ../RCS_code/R2
+node scripts/link-host-packages.mjs --check   # 检查
+node scripts/link-host-packages.mjs           # 修复
 ```
 
-## 验证阶梯
+`postinstall` 会自动维护（`npm install` 会把目录联接变回普通目录）。
 
-| 级别 | 做什么 | 需要 dsh | 状态 |
-|---|---|---|---|
-| **L0** typecheck | 对着 `dsh-tools@0.1.0-rc.6` 的 `.d.ts` 检查 | ❌ | ✅ 零错误 |
-| **L1** 单元测试 | `vitest run`，断言对着真实工程 | ❌ | ✅ 36/36 |
-| **L2** CLI 冒烟 | `npm run check -- all <工程>` | ❌ | ✅ 通过 |
-| **L2.5** 插件加载 | 桩 ctx 跑 `apply`，验证注册与呈现链路 | ❌ | ✅ 7/7 |
-| **L3** dsh 本地加载 | `npm run dsh:patch` | ✅ | ✅ 启动成功，零错误 |
-| **L4** profile 安装 | `npm run dsh:install` → `npm run dsh:start` | ✅ + pnpm | ✅ rcs-dev profile 已就绪 |
+> 后果值得一提：该轮在工具调用中途崩溃，会话历史里留下没有对应结果的 `tool_calls`，之后**每一轮**都会被模型 API 拒绝（`An assistant message with 'tool_calls' must be followed by tool messages`）—— 整个会话报废，只能新建。
 
-**每一层都抓到了下一层抓不到的东西。**
+### `npm run dsh:start` 起不来
 
-- **L0** 抓出两个真错误：`SearchMatchesResultView` 漏了必填的 `total`；schema 反推的类型字段全是可选的（赋值是单向的，"execute 返回值能过检查"不等于"能当严格类型用"），而渲染钩子按契约不得抛异常，必须防御式取值。
-- **L2.5** 用桩 ctx 把「execute → render → presentationMeta → JSON 往返 → presentResult」在真实数据上跑通。
-- **L3 抓到一个前面全测不出的 Windows 问题**：loader 直接对 `name` 做 `import()`，Node 的 ESM 加载器拒收盘符路径，报 `ERR_UNSUPPORTED_ESM_URL_SCHEME: Received protocol 'd:'`。教程只说"必须是绝对路径"，**Windows 上必须写成 `file:///D:/...`**。
-- **L4** 暴露 pnpm 的构建授权门：`koffi`（`dsh-host-directory-picker-native` 的硬依赖）需要在 profile 的 `pnpm-workspace.yaml` 里显式 `allowBuilds: { koffi: true }`。npm 装 dsh 时是静默跑的，pnpm 把这一步显式化了。
+先看端口是不是已经被另一个实例占了：报错会明确写 `EADDRINUSE: address already in use 127.0.0.1:3080`。
 
-**测试用的是真实工程，不是 mock。** 断言直接来自 2026-08 的手工核查结论（见 [`rcs-embedded-roadmap.md`](./rcs-embedded-roadmap.md) 第三节）：工具必须复现人工找到的结论，既不漏报也不误报。
+### `dsh` 命令本身不可用
 
-其中最有价值的是**防误报断言**：`kin_diff.h`（模板类）与 `angle_loop.h`（内联）有头无源属正常设计，工具若把它们报成缺失即为误报。人工核查时我差点也踩了这个坑。
+本机 launcher 硬编码了 `web` 子命令且不锁版本，`dsh plugin add` 会失效。本仓库一律走 `scripts/dsh.mjs`（锁定 rc.6 并绕开 launcher），所有 `npm run dsh:*` 脚本已经处理好。
 
-## 运行
+---
 
-环境已配好，日常这样用：
+## 路线图
 
-```bash
-npm run dsh:config    # 打印 rcs-dev 的生效配置树，不进交互界面 —— 排错首选
-npm run dsh:start     # 启动 rcs-dev profile（已装好插件）
-npm run dsh:install   # 改了代码后：重新构建并装进 profile
-```
+**已完成** —— 队内上下文、规则查询与跨赛季导入、飞书资料同步与离线检索、分层与嵌入式检查、协议解析、构建与烧录、三级安全管控。
 
-临时调试（不改 profile，用 overlay 挂到 web profile）：
+**留了接口，等实物/数据** —— 这些能力**未配置时会明确拒绝运行**，不会拿默认值糊弄：
 
-```bash
-npm run dsh:patch:config
-npm run dsh:patch
-```
+| 能力 | 等什么 |
+|---|---|
+| `rcs_bus_decode` | CAN ID → 机构映射（每年底盘全新，等实车定版后填 `config/bus-map.json`） |
+| 日志解析与赛后复盘 | 一份真实日志样本 + 格式说明 |
+| `rcs_pid_advise` | 一份带调参过程的 VOFA 波形 |
+| 赛场清单 | 检录/就位/自检/下场各阶段的实际内容 |
+| UI Tier 2 面板 | RCS 品牌色（现为中性占位，**未编造**） |
 
-### 为什么不能直接用 `dsh` 命令
+---
 
-系统里的 `dsh` 是 `AppData\Local\Programs\dsh-launcher\bin\dsh.cmd`，内容是 `npx @deepseek-ai/dsh web %*`，有两个问题：
+## 约定
 
-1. **不锁版本** —— 实测会漂到 `0.1.1-rc.2`，而本插件是按 `0.1.0-rc.6` 的类型定义写并验证的。
-2. **硬编码 `web` 子命令** —— 所有参数都被追加到 `web` 后面。所以 `dsh --version` 会变成 `dsh web --version`（`web` 子命令 `allowUnknownOption`，参数透传给 web 应用 → 直接启服务，看起来就是"卡住"）；**`dsh plugin add` 更是彻底失效**，因为 `plugin` 成了 web 应用的位置参数。
+这套工具反复付过学费的几条，写在这里供后来者参考：
 
-`scripts/dsh.mjs` 解决这两点：锁定版本，三级回退解析（本仓库 node_modules → npx 缓存 → npx 拉取）。换 dsh 版本前请重跑 `npm run verify`。
-
-## 目录结构
-
-```
-dsh4rcs/
-├── config/                             ★ 数据与代码解耦，赛季更新只改这里
-│   ├── layer-rules.json
-│   └── template-manifest.json
-├── packages/
-│   ├── rcs-core/     src/{types,fsutil,layer-lint,template-gap,repo-hygiene,rule-diff,cli,index}.ts
-│   ├── rcs-ui/       src/{view-model,theme,panel-contract,index}.ts
-│   └── dsh-rcs-control/
-│       ├── src/index.ts                dsh 适配层
-│       ├── lib/index.js                构建产物（L3/L4 加载它）
-│       ├── cordis.patch.yml            bundle 层 patch（用包名）
-│       └── package.json                含 dsh.bundle 声明
-├── build.mjs                           esbuild：核心打入、宿主外置
-├── dev.cordis.yml                      L3 overlay（用绝对路径）
-└── 文档：deepseek-harness-plugin-guide.md / dsh-rcs-plugin-design.md / rcs-embedded-roadmap.md
-```
-
-## 已知事项
-
-- **宿主包必须外置**。`@deepseek-ai/*` 打进产物会造成双实例，服务标识与 `instanceof` 全乱。`build.mjs` 检出这种情况会直接报错退出。
-- **本地 devDeps 与 dsh 运行时是两份拷贝**。三个 `@deepseek-ai` 包精确锁版本（无 `^`）以降低偏差；根治办法是走 L4 用 `dsh plugin add` 装进 profile，让插件解析到 dsh 自己的副本。
-- **依赖真实工程路径**：默认 `D:/code/RCS_code`，可用 `RCS_PROJECT` 环境变量或工具参数覆盖。目录不存在时相关测试自动跳过而非失败。
-- 文档里的 `deepseek-harness-plugin-guide.md` 有两处示例与 rc.6 实现不符（`tools/pre-execute` 是 waterfall 不是 bail；`ToolGuard` 返回拒绝原因字符串不是布尔），实现 guard 模块时以本仓库适配层为准。
+- **误报比漏报更伤** —— 天天喊狼来了的检查没人看。分层检查曾一次喷 87 条、嵌入式检查曾喷 253 条，收敛到 14 和 7 才有人用。
+- **假绿比红更危险** —— 检查项宁可报「未验证」，也不要给一个没验过的勾。
+- **静默丢数据最危险** —— 规则提取曾漏掉整条条款，167 条跑通了但少一条没人看得出来。
+- **失败却说不出原因是最糟的输出** —— 它逼人去手工翻日志，那工具就白做了。
