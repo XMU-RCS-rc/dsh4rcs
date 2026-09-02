@@ -1,0 +1,25 @@
+# 仓库内一律用 LF。
+#
+# 起因：本仓库的行尾原本是混的 —— 一部分文件来自网页端上传，一部分来自本地
+# 编辑器，同一个目录下 CRLF 和 LF 都有。这样任何一次跨工具的编辑都可能把整个
+# 文件重写成另一种行尾，diff 里几百行全是噪音，review 时根本看不出真正改了什么
+# （实际发生过：一次改两行的提交产生了 586 行的 diff）。
+#
+# 现在还有 Windows 与 Ubuntu 两条 CI，不统一只会越来越乱。
+#
+# text=auto 让 git 自己识别哪些是文本；eol=lf 规定仓库与工作区都存 LF。
+# 队里清一色 Windows，但 VS Code、Keil、Notepad++ 处理 LF 都没有问题 ——
+# 真正会被 CRLF/LF 差异咬到的 .bat/.cmd 本仓库一个都没有。
+* text=auto eol=lf
+
+# 二进制：让 git 别当文本处理，否则行尾转换会直接把文件弄坏。
+*.docx binary
+*.xlsx binary
+*.pdf binary
+*.png binary
+*.jpg binary
+*.ico binary
+# 嵌入式产物（虽然已在 .gitignore 里，万一有人 -f 强加进来也不至于损坏）
+*.hex binary
+*.bin binary
+*.axf binary
