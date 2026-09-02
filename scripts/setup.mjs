@@ -142,10 +142,17 @@ try {
   const { execFileSync } = await import('node:child_process')
   execFileSync(process.execPath, [join(REPO, 'scripts', 'link-host-packages.mjs'), '--check'], { stdio: 'pipe' })
   console.log(ok('插件与宿主使用同一份宿主包'))
-} catch {
-  console.log(warn('存在双实例风险 —— 跑 `node scripts/link-host-packages.mjs` 修复'))
-  console.log('       npm install 之后要重跑一次：装依赖会把联接变回普通目录。')
-  blocking++
+} catch (e) {
+  // 退出码 2 = 本机根本没装过 dsh，那不是双实例风险，只是还没到那一步。
+  // 两者混为一谈会让人对着一个不存在的问题排查。
+  if (e.status === 2) {
+    console.log(warn('本机还没有 dsh 运行时，无法检查 —— 先跑 `npm run dsh:config` 让 npx 把它下下来'))
+    console.log('       只想跑 npm run check / npm run test 的话，这项可以不管。')
+  } else {
+    console.log(warn('存在双实例风险 —— 跑 `node scripts/link-host-packages.mjs` 修复'))
+    console.log('       npm install 之后要重跑一次：装依赖会把联接变回普通目录。')
+    blocking++
+  }
 }
 
 // ---------- 6. 工具链 ----------

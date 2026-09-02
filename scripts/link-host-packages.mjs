@@ -60,14 +60,32 @@ const SCOPES = [
 const HOST_PACKAGES = ['dsh-tools', 'cordis', 'schemastery']
 
 const mode = process.argv.includes('--check') ? 'check' : process.argv.includes('--undo') ? 'undo' : 'apply'
+/**
+ * 由 postinstall 调用时传入。差别只有一处：**找不到宿主就安静退出 0**。
+ *
+ * 没有它，`npm install` 会在任何没装过 dsh 的机器上直接失败（postinstall
+ * 非零退出会让 npm 整个装不上）—— 包括队友的第一次 clone，以及 CI。
+ * 而双实例风险本来就由 `npm run setup` 作为阻塞项报告，postinstall 只是顺手
+ * 维护，不该是安装的门槛。
+ */
+const fromPostinstall = process.argv.includes('--postinstall')
 
-/** 找到 dsh 运行时实际使用的 node_modules。 */
+/**
+ * 找到 dsh 运行时实际使用的 node_modules。
+ *
+ * npx 缓存位置随平台不同：Windows 在 `%LOCALAPPDATA%\npm-cache\_npx`，
+ * Linux/macOS 在 `~/.npm/_npx`。两处都找一遍 —— 队里目前都是 Windows，
+ * 但 CI 跑 Linux，写死一个平台会让脚本在那边永远报"找不到"。
+ */
 function findHostScope() {
-  const cache = join(process.env['LOCALAPPDATA'] ?? '', 'npm-cache', '_npx')
-  if (!existsSync(cache)) return undefined
-  for (const dir of readdirSync(cache)) {
-    const p = join(cache, dir, 'node_modules', '@deepseek-ai')
-    if (existsSync(join(p, 'dsh-tools', 'package.json'))) return p
+  const home = process.env['USERPROFILE'] ?? process.env['HOME'] ?? ''
+  const caches = [join(process.env['LOCALAPPDATA'] ?? '', 'npm-cache', '_npx'), join(home, '.npm', '_npx')]
+  for (const cache of caches) {
+    if (!existsSync(cache)) continue
+    for (const dir of readdirSync(cache)) {
+      const p = join(cache, dir, 'node_modules', '@deepseek-ai')
+      if (existsSync(join(p, 'dsh-tools', 'package.json'))) return p
+    }
   }
   return undefined
 }
@@ -89,6 +107,12 @@ const isLink = (p) => {
 
 const host = findHostScope()
 if (!host) {
+  if (fromPostinstall) {
+    // 还没装过 dsh 是完全正常的状态（第一次 clone、只想跑 npm run check、CI）。
+    // 这里失败会让 npm install 整个失败，代价远大于收益。
+    console.log('（跳过宿主包联接：本机还没有 dsh 运行时。装好 dsh 后跑 `npm run setup` 即可。）')
+    process.exit(0)
+  }
   console.error('找不到 dsh 运行时的 node_modules（npx 缓存）。先跑一次 `npm run dsh:config` 让 npx 把它下下来。')
   process.exit(2)
 }
