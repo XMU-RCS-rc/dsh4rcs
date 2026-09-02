@@ -27,7 +27,7 @@ import { syncKnowledgeBase, DEFAULT_SYNC_POLICY } from '../../rcs-core/src/kb-sy
 import type { KbSource, SyncPolicy, SyncResult } from '../../rcs-core/src/kb-sync.ts'
 import { searchKb, kbStatus } from '../../rcs-core/src/kb-index.ts'
 import type { KbHit, KbStatus } from '../../rcs-core/src/kb-index.ts'
-import { loadTeamConfig } from '../../rcs-core/src/team-context.ts'
+import { TeamContext } from '../../rcs-core/src/team-context.ts'
 import type { FeishuConfig } from '../../rcs-core/src/team-context.ts'
 import { repoPaths } from '../../rcs-core/src/paths.ts'
 
@@ -209,7 +209,7 @@ export function apply(ctx: Context, config: Config): void {
     const fromCore = shared(ctx)?.feishu
     if (fromCore) return fromCore
     const teamFile = config.teamConfig || repoPaths.teamConfig()
-    const team = loadTeamConfig(teamFile)
+    const team = TeamContext.fromFile(teamFile)
     if (!team.feishu) {
       throw new Error(
         `${teamFile} 里没有 feishu 配置段。\n` +
@@ -220,8 +220,12 @@ export function apply(ctx: Context, config: Config): void {
   }
 
   /** 镜像目录：插件配置 > core 共享 > team.json > 本仓库的 data/kb-cache。 */
-  const cacheDir = (): string =>
-    config.cacheDir || shared(ctx)?.kbCacheDir || feishuConfig().cacheDir || repoPaths.kbCache()
+  const cacheDir = (): string => {
+    const fromConfigOrCore = config.cacheDir || shared(ctx)?.kbCacheDir
+    if (fromConfigOrCore) return fromConfigOrCore
+    const teamFile = config.teamConfig || repoPaths.teamConfig()
+    return TeamContext.fromFile(teamFile).kbCacheDir
+  }
 
   const policyOf = (fc: FeishuConfig): SyncPolicy => ({ ...DEFAULT_SYNC_POLICY, ...(fc.sync ?? {}) })
 

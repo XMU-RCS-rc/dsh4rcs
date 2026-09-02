@@ -20,7 +20,7 @@
  *
  * 写死一个猜测值比报错危险：拿错路径做检查，结论看起来正常但完全不对。
  */
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -38,17 +38,81 @@ export function repoRootFrom(moduleUrl: string): string {
   return resolve(dirname(fileURLToPath(moduleUrl)), '..', '..', '..')
 }
 
-/** 本仓库根目录。 */
+/**
+ * 模块位置推导出的候选根。仅为兼容旧调用保留；调用方不能假定它已通过校验。
+ * tgz 安装时它会指向 profile 根，而不是 dsh4rcs 仓库。
+ */
 export const REPO_ROOT = repoRootFrom(import.meta.url)
+
+export type RepoResolution =
+  | { ok: true; root: string; from: string }
+  | { ok: false; tried: string[] }
+
+/** 同时校验包名与队内配置，避免把碰巧有 config/team.json 的目录认成仓库。 */
+export function looksLikeRcsRepo(dir: string): boolean {
+  try {
+    if (!existsSync(join(dir, 'config', 'team.json'))) return false
+    const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { name?: string }
+    return pkg.name === 'dsh4rcs'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 解析 dsh4rcs 数据根。
+ *
+ * tgz 安装把插件复制到 profile/node_modules，仓库根不再是它的祖先，因此这里只
+ * 接受显式供给、环境变量，或通过标志物校验的源码/link 布局；绝不返回未经校验
+ * 的 profile 根。
+ */
+export function resolveRepoRoot(options: {
+  explicit?: string
+  env?: Record<string, string | undefined>
+  moduleUrl?: string
+} = {}): RepoResolution {
+  const env = options.env ?? process.env
+  const tried: string[] = []
+  const candidates: [string, string | undefined][] = [
+    ['显式配置', options.explicit],
+    ['环境变量 DSH4RCS_HOME', env['DSH4RCS_HOME']],
+    ['模块位置上三级（源码/link 布局）', repoRootFrom(options.moduleUrl ?? import.meta.url)],
+  ]
+
+  for (const [from, value] of candidates) {
+    if (!value?.trim()) continue
+    const abs = resolve(value)
+    tried.push(`${from}: ${abs}`)
+    if (looksLikeRcsRepo(abs)) return { ok: true, root: abs, from }
+  }
+  return { ok: false, tried }
+}
+
+export function repoRootNotFoundMessage(tried: string[]): string {
+  return (
+    '找不到 dsh4rcs 数据根（需要 package.json 与 config/team.json）。已按顺序找过：\n' +
+    (tried.length > 0 ? tried.map((t) => `  · ${t}`).join('\n') : '  （没有任何候选）') +
+    '\n\n以 tgz 安装到 profile 时无法从 node_modules 自动推导仓库位置。请任选一种：\n' +
+    '  1. 在 profile 的 cordis.patch.yml 中显式设置 teamConfig（推荐）\n' +
+    '  2. 设置环境变量 DSH4RCS_HOME\n' +
+    '  3. 开发环境使用 link 方式安装插件。'
+  )
+}
+
+function resolvedRepoRoot(): string {
+  const result = resolveRepoRoot()
+  if (!result.ok) throw new Error(repoRootNotFoundMessage(result.tried))
+  return result.root
+}
 
 /** 仓库内的固定位置 —— 这些**可以**写死，因为它们跟着仓库走。 */
 export const repoPaths = {
-  config: (): string => join(REPO_ROOT, 'config'),
-  teamConfig: (): string => join(REPO_ROOT, 'config', 'team.json'),
-  rulesRoot: (): string => join(REPO_ROOT, 'data', 'rules'),
-  kbCache: (): string => join(REPO_ROOT, 'data', 'kb-cache'),
+  config: (): string => join(resolvedRepoRoot(), 'config'),
+  teamConfig: (): string => join(resolvedRepoRoot(), 'config', 'team.json'),
+  rulesRoot: (): string => join(resolvedRepoRoot(), 'data', 'rules'),
+  kbCache: (): string => join(resolvedRepoRoot(), 'data', 'kb-cache'),
   /** 版本新鲜度检查的缓存。点号开头 + gitignore：它是本机状态，不该进版本控制。 */
-  versionCache: (): string => join(REPO_ROOT, 'data', '.version-cache.json'),
+  versionCache: (): string => join(resolvedRepoRoot(), 'data', '.version-cache.json'),
 }
 
 /** 判断一个目录像不像 RCS 固件仓库。用于自动发现时避免认错。 */

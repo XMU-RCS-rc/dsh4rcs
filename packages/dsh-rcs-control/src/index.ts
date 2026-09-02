@@ -302,6 +302,7 @@ function renderFlash(r: FlashResult): string {
  * 而设计上它们要能各自独立安装。用结构类型 + 运行时探测即可。
  */
 interface RcsShared {
+  dataRoot?: string
   season?: string
   projectRoot?: string
   rulesRoot?: string
@@ -340,7 +341,10 @@ export function apply(ctx: Context, config: Config): void {
   }
 
   /** 规则与清单 JSON：插件配置 > 本仓库的 config/ 目录。 */
-  const configDir = (): string => config.configDir || repoPaths.config()
+  const configDir = (): string => {
+    const dataRoot = shared(ctx)?.dataRoot
+    return config.configDir || (dataRoot ? join(dataRoot, 'config') : repoPaths.config())
+  }
 
   const layerRules = (): LayerRulesConfig =>
     loadJsonConfig<LayerRulesConfig>(join(configDir(), 'layer-rules.json'))

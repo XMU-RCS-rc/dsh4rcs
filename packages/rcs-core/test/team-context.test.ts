@@ -115,6 +115,12 @@ describe.skipIf(!hasConfig)('TeamContext 对真实 config/team.json', () => {
     expect(s).toContain('stm32f407')
   })
 
+  it('显式 teamConfig 能派生规则和镜像目录，不依赖插件安装位置', () => {
+    expect(ctx.dataRoot).toBe(REPO)
+    expect(ctx.rulesRoot).toBe(join(REPO, 'data', 'rules'))
+    expect(ctx.kbCacheDir).toBe(join(REPO, 'data', 'kb-cache'))
+  })
+
   it('工程层次识别可用', () => {
     expect(ctx.layerOf('RCS_Support/inc/sync_pid.h')).toBe('RCS_Support')
   })

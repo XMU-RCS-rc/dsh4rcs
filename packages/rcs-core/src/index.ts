@@ -78,10 +78,10 @@ export type {
 export { nodeRunner, nodeDeps, whichSync } from './runner.ts'
 
 export {
-  REPO_ROOT, repoRootFrom, repoPaths, looksLikeFirmwareRepo,
-  resolveFirmwareRoot, firmwareNotFoundMessage,
+  REPO_ROOT, repoRootFrom, repoPaths, looksLikeRcsRepo, resolveRepoRoot,
+  repoRootNotFoundMessage, looksLikeFirmwareRepo, resolveFirmwareRoot, firmwareNotFoundMessage,
 } from './paths.ts'
-export type { FirmwareResolution } from './paths.ts'
+export type { RepoResolution, FirmwareResolution } from './paths.ts'
 
 export {
   loadBusMap, scaffoldBusMap, parseRobotLog, advisePid, PENDING_VEHICLE_CAPABILITIES,

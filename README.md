@@ -130,6 +130,28 @@ npm run dsh:start      # 等打印出 dsh web 地址再开浏览器
 
 `npm run setup` 只读不写（除非加 `--write`），逐项告诉你还缺什么以及怎么补。
 
+### tgz 安装到其它 profile
+
+`npm run dsh:install` 使用 link 布局，插件能从真实模块位置识别本仓库。若把
+`dsh-rcs-*.tgz` 安装到 `web` 等其它 profile，插件位于
+`<profile>/node_modules`，**无法反推出 clone 在哪里**；必须显式供给路径。
+
+在该 profile 的 `cordis.patch.yml` 中加入（把路径换成实际 clone 位置）：
+
+```yaml
+- id: rcs-core
+  config:
+    teamConfig: 'D:/code/dsh4rcs/config/team.json'
+```
+
+完整套件会通过 `ctx.rcs` 共享该配置，并从 `teamConfig` 的位置派生
+`data/rules`、`data/kb-cache` 和 `config/`。若单独安装某个插件，则给该插件
+设置其已有的 `teamConfig`、`rulesRoot`、`cacheDir` 或 `configDir` 字段。
+
+也可设置 `DSH4RCS_HOME` 指向 clone 根目录。两种方式都会校验
+`package.json` 与 `config/team.json`；指错时明确报错，不会把 profile 根当作
+仓库并产生假绿。
+
 ### 推荐目录布局
 
 固件仓库放在**同级目录**即可自动发现，无需任何配置：

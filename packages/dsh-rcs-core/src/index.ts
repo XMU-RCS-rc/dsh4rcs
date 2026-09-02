@@ -19,6 +19,7 @@
  * 另注册一个 `rcs_team_context` 工具，让模型能直接问「我们现在什么赛季、什么主题」。
  */
 import { readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import type { Context } from '@deepseek-ai/cordis'
 import { Service } from '@deepseek-ai/cordis'
@@ -28,7 +29,7 @@ import type { ToolCallView } from '@deepseek-ai/dsh-tools'
 
 import { TeamContext, daysUntil } from '../../rcs-core/src/team-context.ts'
 import type { TeamConfig } from '../../rcs-core/src/team-context.ts'
-import { repoPaths, REPO_ROOT } from '../../rcs-core/src/paths.ts'
+import { repoPaths } from '../../rcs-core/src/paths.ts'
 import { nodeRunner } from '../../rcs-core/src/runner.ts'
 import {
   checkFreshness,
@@ -47,7 +48,8 @@ export interface Config {
 
 export const Config: Schema<Config> = Schema.object({
   // 默认留空：写死绝对路径在别人机器上一个都不存在。留空时回落到
-  // 本仓库内的 config/team.json（由 repoPaths 从模块位置推出）。
+  // 本仓库内的 config/team.json。源码/link 布局可从模块位置识别；
+  // tgz 布局必须在 profile patch 显式设置，或提供 DSH4RCS_HOME。
   teamConfig: Schema.string().default(''),
 })
 
@@ -82,8 +84,17 @@ export class RcsService extends Service {
   get templateRoot(): string {
     return this.team.templateRoot
   }
+  get dataRoot(): string {
+    return this.team.dataRoot
+  }
   get rulesRoot(): string {
     return this.team.rulesRoot
+  }
+  get kbCacheDir(): string {
+    return this.team.kbCacheDir
+  }
+  get feishu() {
+    return this.team.feishu
   }
   get rulesVersion(): string {
     return this.team.rulesVersion
@@ -119,8 +130,7 @@ function callView(title: string): ToolCallView {
  * 读写都吞掉异常：缓存只是省一次网络往返，**它自己永远不该成为失败的理由**。
  * 磁盘只读、目录被删、JSON 坏了，都应该退化成「这次多打一次网」。
  */
-function cacheStore(): FreshnessStore {
-  const file = repoPaths.versionCache()
+function cacheStore(file: string): FreshnessStore {
   return {
     read: () => {
       try {
@@ -253,10 +263,10 @@ export function apply(ctx: Context, config: Config): void {
           void exec
           const report = await checkFreshness({
             deps: { run: nodeRunner, fetchJson: nodeFetchJson },
-            repoRoot: REPO_ROOT,
+            repoRoot: scoped.rcs.dataRoot,
             rules: scoped.rcs.config.rules,
             now: new Date(),
-            store: cacheStore(),
+            store: cacheStore(join(scoped.rcs.dataRoot, 'data', '.version-cache.json')),
             refresh: args.refresh === true,
           })
           return {

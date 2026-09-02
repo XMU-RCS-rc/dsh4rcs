@@ -9,10 +9,10 @@
  * 而 TS 的 interface **不隐式带索引签名**、type 别名带 —— 用 interface 会编译不过。
  */
 import { readFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 import type { KbSource, SyncPolicy } from './kb-sync.ts'
-import { resolveFirmwareRoot, repoPaths } from './paths.ts'
+import { resolveFirmwareRoot } from './paths.ts'
 
 export type RobotId = 'TR' | 'BR'
 
@@ -155,7 +155,13 @@ export class TeamContext {
   }
 
   static fromFile(file: string): TeamContext {
-    return new TeamContext(loadTeamConfig(file), file)
+    const absolute = resolve(file)
+    return new TeamContext(loadTeamConfig(absolute), absolute)
+  }
+
+  /** `config/team.json` 所在仓库的数据根；显式配置一次后其余路径都由此派生。 */
+  get dataRoot(): string {
+    return resolve(dirname(this.configFile), '..')
   }
 
   get season(): string {
@@ -178,7 +184,7 @@ export class TeamContext {
    */
   get projectRoot(): string {
     const configured = this.config.firmware.repo
-    const r = resolveFirmwareRoot(configured ? { explicit: configured } : {})
+    const r = resolveFirmwareRoot(configured ? { explicit: configured } : { repoRoot: this.dataRoot })
     return r.ok ? r.root : ''
   }
 
@@ -189,7 +195,7 @@ export class TeamContext {
 
   /** 规则数据根目录。留空时回落到本仓库的 `data/rules`。 */
   get rulesRoot(): string {
-    return this.config.rules.root || repoPaths.rulesRoot()
+    return this.config.rules.root || join(this.dataRoot, 'data', 'rules')
   }
 
   get rulesVersion(): string {
@@ -202,7 +208,7 @@ export class TeamContext {
 
   /** 知识库镜像目录。留空时回落到本仓库的 `data/kb-cache`。 */
   get kbCacheDir(): string {
-    return this.config.feishu?.cacheDir || repoPaths.kbCache()
+    return this.config.feishu?.cacheDir || join(this.dataRoot, 'data', 'kb-cache')
   }
 
   /** 按 id 找机器人。大小写不敏感。 */
