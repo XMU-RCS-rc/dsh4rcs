@@ -217,7 +217,7 @@ npm run kb:sync                        # 增量同步队内资料
 
 结果缓存 24 小时（`data/.version-cache.json`，已 gitignore），`refresh` 参数强制重查。赛场模式下整个工具被安全层拦在 L1（联网 + 落盘，与 `rcs_kb_sync` 同类）。
 
-> 规则书那项要人配合：去官网确认过之后 —— **不管有没有新版** —— 把 `config/team.json` 的 `rules.lastCheckedAt` 改成当天。真有新版就 `npm run rules:import <docx> <赛季> <版本>` 导入。
+> 规则书那项要人配合：去官网确认过之后 —— **不管有没有新版** —— 把 `config/team.json` 的 `rules.lastCheckedAt` 改成当天。真有新版就 `npm run rules:import -- <docx> <赛季> <版本>` 导入（`--` 不能省，否则参数传不进脚本）。
 >
 > 顺带一提，`rcs_team_context` 也会捎带这条提醒：问「我们现在什么赛季」的人，正是最该知道「规则版本很久没确认过了」的人。
 
