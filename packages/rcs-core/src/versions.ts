@@ -7,7 +7,7 @@
  *   - `scripts/dsh.mjs` 用它决定复用 npx 缓存还是重新拉取；
  *   - `freshness.ts` 用它和上游 latest 比对，判断宿主是不是有新版了。
  *
- * `dsh.mjs` 在**顶层**就 `spawnSync` 把 dsh 拉起来（没有 main 守卫），
+ * `dsh.mjs` 在**顶层**就把 dsh 拉起来（没有 main 守卫），
  * 所以任何人 import 它都会真的启动一个 dsh 进程。常量只能放在第三处。
  */
 

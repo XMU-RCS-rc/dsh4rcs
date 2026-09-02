@@ -130,6 +130,12 @@ npm run dsh:start      # 等打印出 dsh web 地址再开浏览器
 
 `npm run setup` 只读不写（除非加 `--write`），逐项告诉你还缺什么以及怎么补。
 
+`dsh:install` 会打印构建/安装两个阶段。pnpm 保留原生进度；如果首次需要
+通过 npx 下载锁定版 dsh，非交互终端与 CI 每 15 秒打印一次已用时间，避免长时间
+无输出被误判为卡死。这里不显示百分比，因为 npx 不提供总包数或总字节数。
+PowerShell 中需要留存完整日志时可用
+`npm run dsh:install 2>&1 | Tee-Object dsh-install.log`。
+
 ### tgz 安装到其它 profile
 
 `npm run dsh:install` 使用 link 布局，插件能从真实模块位置识别本仓库。若把

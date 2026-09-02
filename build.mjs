@@ -19,6 +19,10 @@ import { join } from 'node:path'
 /** 所有 dsh 插件包（目录名即包名）。新增插件时加一行即可。 */
 const PLUGINS = ['dsh-rcs-core', 'dsh-rcs-guard', 'dsh-rcs-control', 'dsh-rcs-rules', 'dsh-rcs-kb']
 
+if (process.argv.includes('--install-stage')) {
+  console.error(`[dsh:install 1/2] 构建 ${PLUGINS.length} 个插件`)
+}
+
 let failed = false
 
 for (const name of PLUGINS) {

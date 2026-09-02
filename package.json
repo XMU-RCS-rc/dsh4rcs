@@ -17,7 +17,7 @@
     "dsh": "node scripts/dsh.mjs",
     "dsh:config": "node scripts/dsh.mjs --profile rcs-dev --dump-config",
     "dsh:start": "node scripts/dsh.mjs --profile rcs-dev",
-    "dsh:install": "npm run build && node scripts/dsh.mjs plugin --profile rcs-dev add ./packages/dsh-rcs-core ./packages/dsh-rcs-guard ./packages/dsh-rcs-rules ./packages/dsh-rcs-control ./packages/dsh-rcs-kb",
+    "dsh:install": "npm run build -- --install-stage && node scripts/dsh.mjs plugin --profile rcs-dev add ./packages/dsh-rcs-core ./packages/dsh-rcs-guard ./packages/dsh-rcs-rules ./packages/dsh-rcs-control ./packages/dsh-rcs-kb",
     "dsh:patch": "node scripts/dsh.mjs --profile web --patch ./dev.cordis.yml",
     "dsh:patch:config": "node scripts/dsh.mjs --profile web --dump-config --patch ./dev.cordis.yml",
     "rules:import": "node scripts/docx-to-rules.mjs",
