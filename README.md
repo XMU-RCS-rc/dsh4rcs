@@ -1,5 +1,7 @@
 # dsh4rcs
 
+[![verify](https://github.com/XMU-RCS-rc/dsh4rcs/actions/workflows/verify.yml/badge.svg)](https://github.com/XMU-RCS-rc/dsh4rcs/actions/workflows/verify.yml)
+
 厦门大学 RCS 战队的 [DeepSeek Harness](https://github.com/deepseek-ai) 插件套件 —— 面向 ROBOCON 2027「女娲补天」赛季的电控方向。
 
 把队内散落在文档、口头约定和老队员脑子里的东西，变成 Agent 能直接调用、且**可验证**的工具：规则条款查得到出处，工程规范能自动检查，队内资料赛场断网也能检索。
@@ -195,6 +197,12 @@ npm run test        # 378 个测试
 ```
 
 > `verify` 的顺序是 typecheck → **build** → test：部分测试加载 `packages/*/lib` 的构建产物，先测后构建会拿到上一次的旧产物，报出令人困惑的失败。
+
+### 持续集成
+
+推到 `main` 或开 PR 时，[`.github/workflows/verify.yml`](./.github/workflows/verify.yml) 会在 **Ubuntu 与 Windows** 上各跑一遍 `npm ci → typecheck → build → test`。
+
+依赖固件仓库、Keil、飞书凭证的测试都用 `skipIf` 守着，CI 上自动跳过 —— 这是设计好的，不是漏跑。队里清一色 Windows，多跑一个 Ubuntu 是为了逼出硬编码盘符、路径分隔符这类问题（都实际踩过）。
 
 ### 验证阶梯
 

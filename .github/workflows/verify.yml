@@ -1,0 +1,53 @@
+# 持续集成 —— 队友推代码时自动跑一遍 typecheck / build / test。
+#
+# ## 为什么 CI 只跑这三步
+#
+# 本仓库的验证阶梯共六级（见 README「验证阶梯」），其中 L0-L1 不需要 dsh、
+# 不需要 Keil、不需要固件仓库，正好完整跑在 CI 上。L3/L4 要启动 dsh 网页端，
+# 不适合无人值守，留给本地。
+#
+# 依赖固件仓库的测试（分层检查、运动学、R2 防误报基准）用 skipIf 守着，
+# CI 上找不到 RCS_code 会自动跳过 —— 这是设计好的，不是漏跑。
+#
+# ## 两个平台都跑
+#
+# 队里清一色 Windows，但只跑 Windows 会让路径处理的毛病一直藏着
+# （硬编码盘符、路径分隔符、npx 缓存位置都踩过）。Ubuntu 那一路是
+# 用来逼出这类问题的。注意 Windows runner 的分钟数按 2 倍计费。
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 同一分支连续推送时取消上一次运行 —— 免费额度有限，别浪费在已经过时的提交上。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false # 一个平台挂了也要看另一个的结果，否则得推两次才知道
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22' # 用到原生 TypeScript 剥离，低于 22 跑不起来
+          cache: npm
+
+      # 用 ci 而非 install：严格按 lockfile 装。
+      # 本地曾出现过 node_modules 漂到 lockfile 之外的版本，
+      # 结果 typecheck 对着的 .d.ts 和运行时根本不是一个版本。
+      - run: npm ci
+
+      # 顺序不能改：部分测试加载 packages/*/lib 的构建产物，
+      # 先测后构建会拿到上一次的旧产物。
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
