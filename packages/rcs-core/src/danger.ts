@@ -60,6 +60,14 @@ export const DEFAULT_DANGER_RULES: DangerRule[] = [
       '赛场上禁止：网络不可靠，且赛场只该查已有镜像，不该改它',
   },
   { tool: 'rcs_support_test', level: 'L1', reason: '会在本机运行测试进程' },
+  {
+    tool: 'rcs_version_status',
+    level: 'L1',
+    reason:
+      '新鲜度检查会联网（git ls-remote + npm registry）并写本地缓存 —— 与 rcs_kb_sync 同类。' +
+      '赛场上拦掉：那时网络不可靠，而且「插件落后了两个提交」这种信息，' +
+      '在检录台上既做不了什么也不该分散注意力',
+  },
   { tool: 'rcs_serial_monitor', level: 'L1', reason: '会占用串口设备' },
   { tool: 'rcs_sim_launch', level: 'L1', reason: '会拉起仿真进程' },
 ]

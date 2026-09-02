@@ -47,6 +47,8 @@ export const repoPaths = {
   teamConfig: (): string => join(REPO_ROOT, 'config', 'team.json'),
   rulesRoot: (): string => join(REPO_ROOT, 'data', 'rules'),
   kbCache: (): string => join(REPO_ROOT, 'data', 'kb-cache'),
+  /** 版本新鲜度检查的缓存。点号开头 + gitignore：它是本机状态，不该进版本控制。 */
+  versionCache: (): string => join(REPO_ROOT, 'data', '.version-cache.json'),
 }
 
 /** 判断一个目录像不像 RCS 固件仓库。用于自动发现时避免认错。 */

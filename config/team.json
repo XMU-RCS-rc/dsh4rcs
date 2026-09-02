@@ -8,10 +8,20 @@
   "event": "第二十六届 ROBOCON 竞技赛",
   "theme": "女娲补天",
   "themeAnnouncedAt": "2026-09",
-  "$rulesComment": "V0 是 ABU 原版翻译稿；官方前言明确「很快将有国内赛 V1 版发布」，届时用 scripts/docx-to-rules.mjs 转换后加目录即可。",
+  "$rulesComment": [
+    "V0 是 ABU 原版翻译稿；官方前言明确「很快将有国内赛 V1 版发布」，届时用 `npm run rules:import` 转换后加目录即可。",
+    "",
+    "lastCheckedAt 是**人工**去官网确认过「没有更新版本」的日期。",
+    "没法自动检测：robocon.org.cn 没有任何接口，爬页面结构极其脆弱，而爬错了",
+    "会给出比查不到危险得多的「假确认」。所以只做过期提醒 —— 超过",
+    "checkIntervalDays 天没人确认，rcs_version_status 与 npm run setup 就会提示去看一眼。",
+    "确认完（无论有没有新版）都请把这个日期改成当天。"
+  ],
   "rules": {
     "root": "",
     "currentVersion": "V0",
+    "lastCheckedAt": "2026-09-02",
+    "checkIntervalDays": 30,
     "abuHost": "Indonesia (Solo)",
     "officialSite": "https://www.robocon.org.cn"
   },

@@ -30,7 +30,7 @@ let blocking = 0
 console.log('dsh4rcs 安装自检\n')
 
 // ---------- 1. Node ----------
-console.log('[1/6] Node 运行时')
+console.log('[1/7] Node 运行时')
 const major = Number(process.versions.node.split('.')[0])
 if (major >= 22) console.log(ok(`Node ${process.versions.node}`))
 else {
@@ -39,7 +39,7 @@ else {
 }
 
 // ---------- 2. 依赖 ----------
-console.log('\n[2/6] 依赖')
+console.log('\n[2/7] 依赖')
 if (existsSync(join(REPO, 'node_modules'))) console.log(ok('node_modules 已安装'))
 else {
   console.log(bad('还没装依赖 —— 先跑 `npm install`'))
@@ -47,7 +47,7 @@ else {
 }
 
 // ---------- 3. 构建产物 ----------
-console.log('\n[3/6] 构建产物')
+console.log('\n[3/7] 构建产物')
 const plugins = ['dsh-rcs-core', 'dsh-rcs-guard', 'dsh-rcs-control', 'dsh-rcs-rules', 'dsh-rcs-kb']
 const built = plugins.filter((p) => existsSync(join(REPO, 'packages', p, 'lib', 'index.js')))
 if (built.length === plugins.length) console.log(ok(`${built.length}/${plugins.length} 个插件已构建`))
@@ -56,7 +56,7 @@ else {
 }
 
 // ---------- 4. 固件仓库 ----------
-console.log('\n[4/6] RCS 固件仓库')
+console.log('\n[4/7] RCS 固件仓库')
 let configured = ''
 const teamFile = repoPaths.teamConfig()
 if (existsSync(teamFile)) {
@@ -83,7 +83,7 @@ if (fw.ok) {
 }
 
 // ---------- 5. 队内配置与数据 ----------
-console.log('\n[5/6] 队内配置与数据')
+console.log('\n[5/7] 队内配置与数据')
 if (existsSync(teamFile)) {
   try {
     const t = JSON.parse(readFileSync(teamFile, 'utf8'))
@@ -156,13 +156,42 @@ try {
 }
 
 // ---------- 6. 工具链 ----------
-console.log('\n[6/6] 本机工具链（可选，缺了只影响对应工具）')
+console.log('\n[6/7] 本机工具链（可选，缺了只影响对应工具）')
 for (const t of probeToolchain(nodeDeps)) {
   if (t.available) console.log(ok(`${t.label}  ${t.path ?? ''}`))
   else {
     console.log(warn(`${t.label} 未找到`))
     if (t.hint) console.log(t.hint.split('\n').map((l) => `       ${l}`).join('\n'))
   }
+}
+
+// ---------- 7. 版本新鲜度 ----------
+// 这一节要联网（git ls-remote + npm registry），但**刻意不写缓存** ——
+// 本脚本对外承诺「只读不写」。它跑得不频繁，多打一次网无所谓；
+// 常用路径是 rcs_version_status 工具，那边走 24 小时缓存。
+//
+// 三项都不是阻塞项：离线是正常状态，规则书没确认过也不妨碍任何本地功能。
+console.log('\n[7/7] 版本新鲜度（联网，失败不影响任何本地功能）')
+try {
+  const { checkFreshness, summarizeFreshness, nodeFetchJson } = await import(
+    '../packages/rcs-core/src/freshness.ts'
+  )
+  const { nodeRunner } = await import('../packages/rcs-core/src/runner.ts')
+  const teamRules = existsSync(teamFile)
+    ? (JSON.parse(readFileSync(teamFile, 'utf8')).rules ?? { currentVersion: '（未知）' })
+    : { currentVersion: '（未知）' }
+
+  const report = await checkFreshness({
+    deps: { run: nodeRunner, fetchJson: nodeFetchJson },
+    repoRoot: REPO,
+    rules: teamRules,
+    now: new Date(),
+    // store 省略 —— 不落盘
+  })
+  console.log(summarizeFreshness(report).split('\n').map((l) => `  ${l}`).join('\n'))
+} catch (e) {
+  console.log(warn(`新鲜度检查没跑起来：${e.message}`))
+  console.log('       这一项失败不影响任何本地功能，可以忽略。')
 }
 
 // ---------- 结论 ----------

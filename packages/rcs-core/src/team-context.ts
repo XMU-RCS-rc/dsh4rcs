@@ -82,7 +82,16 @@ export interface TeamConfig {
   event: string
   theme: string | null
   themeAnnouncedAt?: string
-  rules: { root: string; currentVersion: string; abuHost?: string; officialSite?: string }
+  rules: {
+    root: string
+    currentVersion: string
+    /** 上次**人工**确认过官网没有新版规则书的日期，`YYYY-MM-DD`。见 freshness.ts。 */
+    lastCheckedAt?: string
+    /** 超过多少天没确认就提醒，默认 30。 */
+    checkIntervalDays?: number
+    abuHost?: string
+    officialSite?: string
+  }
   feishu?: FeishuConfig
   robots: RobotSpec[]
   firmware: FirmwareInfo

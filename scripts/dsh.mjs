@@ -26,8 +26,12 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
+// 版本常量放在 rcs-core 里，因为 freshness.ts 也要用它和上游 latest 比对，
+// 而本文件在顶层就 spawnSync 启动 dsh（没有 main 守卫），不能被 import。
+import { PINNED_DSH } from '../packages/rcs-core/src/versions.ts'
+
 /** 本插件验证过的 dsh 版本。改动前请重跑 `npm run verify`。 */
-export const PINNED = '0.1.0-rc.6'
+export const PINNED = PINNED_DSH
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')

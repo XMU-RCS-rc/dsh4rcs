@@ -18,6 +18,8 @@
  *
  * 另注册一个 `rcs_team_context` 工具，让模型能直接问「我们现在什么赛季、什么主题」。
  */
+import { readFileSync, writeFileSync } from 'node:fs'
+
 import type { Context } from '@deepseek-ai/cordis'
 import { Service } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
@@ -26,7 +28,15 @@ import type { ToolCallView } from '@deepseek-ai/dsh-tools'
 
 import { TeamContext, daysUntil } from '../../rcs-core/src/team-context.ts'
 import type { TeamConfig } from '../../rcs-core/src/team-context.ts'
-import { repoPaths } from '../../rcs-core/src/paths.ts'
+import { repoPaths, REPO_ROOT } from '../../rcs-core/src/paths.ts'
+import { nodeRunner } from '../../rcs-core/src/runner.ts'
+import {
+  checkFreshness,
+  checkRulesFreshness,
+  summarizeFreshness,
+  nodeFetchJson,
+} from '../../rcs-core/src/freshness.ts'
+import type { FreshnessStore } from '../../rcs-core/src/freshness.ts'
 
 export const name = 'rcs-core'
 
@@ -103,6 +113,32 @@ function callView(title: string): ToolCallView {
   return { card: 'generic', title, kind: 'read' }
 }
 
+/**
+ * 版本缓存的落盘实现。
+ *
+ * 读写都吞掉异常：缓存只是省一次网络往返，**它自己永远不该成为失败的理由**。
+ * 磁盘只读、目录被删、JSON 坏了，都应该退化成「这次多打一次网」。
+ */
+function cacheStore(): FreshnessStore {
+  const file = repoPaths.versionCache()
+  return {
+    read: () => {
+      try {
+        return readFileSync(file, 'utf8')
+      } catch {
+        return undefined
+      }
+    },
+    write: (text) => {
+      try {
+        writeFileSync(file, text)
+      } catch {
+        /* 写不进去就下次重查 */
+      }
+    },
+  }
+}
+
 export function apply(ctx: Context, config: Config): void {
   // Service 在构造时就把自己注册进 ctx，插件卸载时由 fiber 自动回收
   ctx.plugin(RcsService, config)
@@ -166,6 +202,12 @@ export function apply(ctx: Context, config: Config): void {
           const next = countdown[0]
           if (next) lines.push(`\n最近节点：${next.label} —— ${next.days} 天后（${next.date}）`)
 
+          // 规则书过期提醒是纯函数、零成本、零网络，所以顺带挂在这里：
+          // 问「我们现在什么赛季」的人，正是最该知道「规则版本很久没确认过了」的人。
+          // 拿错版本的条款会给出带条款号、看起来完全可信的答案 —— 比查不到危险得多。
+          const rulesFresh = checkRulesFreshness(rcs.config.rules, today)
+          if (rulesFresh.status !== 'ok') lines.push(`\n⚠️  ${rulesFresh.detail}`)
+
           void exec
           return {
             summary: lines.join('\n'),
@@ -175,6 +217,53 @@ export function apply(ctx: Context, config: Config): void {
             robots,
             countdown,
             firmware: rcs.config.firmware,
+          }
+        },
+      }),
+    )
+
+    scoped.tools.register(
+      defineTool({
+        name: 'rcs_version_status',
+        description:
+          '检查手上这套东西是不是过时了：规则书版本、插件代码、dsh 宿主。' +
+          '**只报告，不会自动升级或拉取任何东西。** 回答"我这份是不是旧的/要不要更新"时调它。' +
+          '赛场模式下被安全层拦掉（联网 + 落盘）。',
+        parameters: {
+          refresh: {
+            type: 'boolean',
+            description: '忽略缓存强制重查。默认读 24 小时内的缓存结果，避免反复打网。',
+          },
+        },
+        output: {
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              summary: { type: 'string', description: '人类可读摘要' },
+              stale: { type: 'number', description: '过时项数量' },
+              items: { type: 'json', description: '三项检查的结构化结果' },
+              fromCache: { type: 'boolean', description: '联网两项是否来自缓存' },
+            },
+          },
+          render: (_args, value) => [{ type: 'text', text: value.summary ?? '' }],
+        },
+        presentCall: () => callView('检查版本新鲜度'),
+        async execute(args, exec) {
+          void exec
+          const report = await checkFreshness({
+            deps: { run: nodeRunner, fetchJson: nodeFetchJson },
+            repoRoot: REPO_ROOT,
+            rules: scoped.rcs.config.rules,
+            now: new Date(),
+            store: cacheStore(),
+            refresh: args.refresh === true,
+          })
+          return {
+            summary: summarizeFreshness(report),
+            stale: report.items.filter((i) => i.status === 'stale').length,
+            items: report.items,
+            fromCache: report.fromCache,
           }
         },
       }),

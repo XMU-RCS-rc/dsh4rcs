@@ -20,6 +20,7 @@
     "dsh:install": "npm run build && node scripts/dsh.mjs plugin --profile rcs-dev add ./packages/dsh-rcs-core ./packages/dsh-rcs-guard ./packages/dsh-rcs-rules ./packages/dsh-rcs-control ./packages/dsh-rcs-kb",
     "dsh:patch": "node scripts/dsh.mjs --profile web --patch ./dev.cordis.yml",
     "dsh:patch:config": "node scripts/dsh.mjs --profile web --dump-config --patch ./dev.cordis.yml",
+    "rules:import": "node scripts/docx-to-rules.mjs",
     "feishu:check": "node scripts/feishu-check.mjs",
     "kb:sync": "node scripts/kb-sync.mjs",
     "kb:dry": "node scripts/kb-sync.mjs --dry",
