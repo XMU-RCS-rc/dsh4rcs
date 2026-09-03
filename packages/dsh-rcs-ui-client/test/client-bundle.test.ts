@@ -25,9 +25,16 @@ describe.skipIf(!hasBundle)('RCS browser UI bundle', () => {
     expect(Buffer.byteLength(bundle)).toBeLessThan(60_000)
   })
 
-  it('keeps the brand entry accessible and links to the team repository', () => {
+  it('uses the RCS blue-white palette', () => {
+    expect(bundle).toContain('#2864dc')
+    expect(bundle).toContain('#174ea6')
+    expect(bundle).toContain('linear-gradient')
+  })
+
+  it('keeps the brand entry accessible and links to the team organization', () => {
     expect(bundle).toContain('"aria-label"')
     expect(bundle).toContain('"data-rcs-team-brand"')
-    expect(bundle).toContain('https://github.com/XMU-RCS-rc/dsh4rcs')
+    expect(bundle).toContain('https://github.com/XMU-RCS-rc')
+    expect(bundle).not.toContain('https://github.com/XMU-RCS-rc/dsh4rcs')
   })
 })

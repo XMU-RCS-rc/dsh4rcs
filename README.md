@@ -128,6 +128,11 @@ npm run dsh:install    # 装进 dsh 的 rcs-dev profile
 npm run dsh:start      # 等打印出 dsh web 地址再开浏览器
 ```
 
+dsh4rcs 整套插件默认启用。需要明确选择时，用 `npm run dsh:start:rcs` 启用，
+或用 `npm run dsh:start:no-rcs` 关闭；后者通过临时 patch 同时禁用
+`core / guard / rules / control / kb / ui-client` 六个入口，但不会卸载插件。
+切换状态需要重启 dsh。
+
 `npm run setup` 只读不写（除非加 `--write`），逐项告诉你还缺什么以及怎么补。
 
 `dsh:install` 会打印构建/安装两个阶段。pnpm 保留原生进度；如果首次需要
@@ -136,7 +141,8 @@ npm run dsh:start      # 等打印出 dsh web 地址再开浏览器
 PowerShell 中需要留存完整日志时可用
 `npm run dsh:install 2>&1 | Tee-Object dsh-install.log`。
 
-`dsh-rcs-ui-client` 声明了浏览器端 bundle，必须先构建才可启动。正常使用
+`dsh-rcs-ui-client` 声明了浏览器端 bundle，必须先构建才可启动。队徽使用 RCS
+蓝白配色，点击后在新标签页打开团队 GitHub 主页。正常使用
 `npm run verify` 或 `npm run dsh:install` 都会先构建；刚 clone 后不要跳过
 这两步直接运行 `dsh:start`，否则宿主会明确报告缺少 `lib/client.js`。
 

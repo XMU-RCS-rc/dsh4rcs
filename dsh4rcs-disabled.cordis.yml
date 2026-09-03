@@ -1,0 +1,14 @@
+# Optional startup overlay: keep the dsh host running while disabling every
+# dsh4rcs entry. Used by `npm run dsh:start:no-rcs`.
+- id: rcs-core
+  disabled: true
+- id: rcs-guard
+  disabled: true
+- id: rcs-rules
+  disabled: true
+- id: rcs-control
+  disabled: true
+- id: rcs-kb
+  disabled: true
+- id: rcs-ui-client
+  disabled: true
