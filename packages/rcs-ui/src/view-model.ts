@@ -5,7 +5,7 @@
  * 之所以单独成层，是因为它要被两处共用：
  *
  *   Tier 1  工具呈现（presentCall / presentResult）—— 已接入，任何 UI 都吃得到
- *   Tier 2  客户端面板（ctx.slots.register + React）—— 见 panel-contract.ts，待实现
+ *   Tier 2  客户端面板（ctx.slots.register + React）—— 队徽入口已接入，完整看板待实现
  *
  * 渲染细节（颜色值、DOM、React）一律不在这里，只产出**语义**。
  *

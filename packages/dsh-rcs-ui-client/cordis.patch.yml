@@ -1,0 +1,5 @@
+# 纯客户端插件：Node half 为空，浏览器 half 注册增量侧栏槽位。
+- insert:
+    - id: rcs-ui-client
+      name: dsh-rcs-ui-client
+      config: {}

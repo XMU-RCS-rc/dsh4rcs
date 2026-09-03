@@ -3,7 +3,7 @@
  *
  * 纯投影 + 零依赖，被两处共用：
  *   Tier 1  工具呈现（presentCall / presentResult）—— 已接入
- *   Tier 2  客户端面板（React slot）—— 契约见 panel-contract.ts，实现待补
+ *   Tier 2  客户端 UI（React slot）—— 队徽入口已接入，完整看板待补
  */
 export {
   severityTone, layerOf, groupByFile, rankRootCauses,

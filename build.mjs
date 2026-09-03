@@ -13,11 +13,18 @@
  *   下面会显式检查，混进去就直接报错退出。
  */
 import { build } from 'esbuild'
-import { rmSync, mkdirSync, existsSync } from 'node:fs'
+import { rmSync, mkdirSync, existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 /** 所有 dsh 插件包（目录名即包名）。新增插件时加一行即可。 */
-const PLUGINS = ['dsh-rcs-core', 'dsh-rcs-guard', 'dsh-rcs-control', 'dsh-rcs-rules', 'dsh-rcs-kb']
+const PLUGINS = [
+  'dsh-rcs-core',
+  'dsh-rcs-guard',
+  'dsh-rcs-control',
+  'dsh-rcs-rules',
+  'dsh-rcs-kb',
+  'dsh-rcs-ui-client',
+]
 
 if (process.argv.includes('--install-stage')) {
   console.error(`[dsh:install 1/2] 构建 ${PLUGINS.length} 个插件`)
@@ -62,6 +69,57 @@ for (const name of PLUGINS) {
     console.error(`   错误：宿主包被打进产物，会造成双实例：`)
     for (const p of leaked) console.error(`     ${p}`)
     failed = true
+  }
+
+  const clientEntry = join(pkgDir, 'src', 'client.js')
+  if (existsSync(clientEntry)) {
+    const clientResult = await build({
+      entryPoints: [clientEntry],
+      bundle: true,
+      platform: 'browser',
+      target: 'es2022',
+      format: 'cjs',
+      write: false,
+      metafile: true,
+      external: [
+        'react',
+        'react/jsx-runtime',
+        'react-dom',
+        'react-dom/client',
+        '@deepseek-ai/*',
+      ],
+      loader: { '.png': 'dataurl' },
+      logLevel: 'warning',
+    })
+    const body = clientResult.outputFiles[0]?.text
+    if (!body) {
+      console.error('   错误：' + name + ' 客户端构建没有产出')
+      failed = true
+      continue
+    }
+    const clientLeaks = Object.keys(clientResult.metafile.inputs)
+      .filter((p) => p.includes('node_modules'))
+    if (clientLeaks.length > 0) {
+      console.error('   错误：客户端宿主包被打进产物，会造成双实例：')
+      for (const p of clientLeaks) console.error('     ' + p)
+      failed = true
+      continue
+    }
+    const maxClientBytes = 60_000
+    const clientBytes = Buffer.byteLength(body)
+    if (clientBytes > maxClientBytes) {
+      console.error('   错误：客户端 bundle 过大（' + clientBytes
+        + ' B > ' + maxClientBytes + ' B），请缩小内嵌资源')
+      failed = true
+      continue
+    }
+    const wrapped = 'window.__ModuleLoader__.load({\n  id: ' + JSON.stringify(name)
+      + ',\n  factory: (require) => {\n    var module = { exports: {} };\n'
+      + '    var exports = module.exports;\n' + body
+      + '\n    return module.exports;\n  }\n});\n'
+    writeFileSync(join(out, 'client.js'), wrapped)
+    console.log('   客户端资源  ' + name + '/lib/client.js（'
+      + clientBytes + ' B，队徽已内嵌）')
   }
 }
 

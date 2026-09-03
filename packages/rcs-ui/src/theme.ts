@@ -1,12 +1,12 @@
 /**
- * RCS 专属视觉 token —— **接口已定，品牌色待队内确认**。
+ * RCS 专属视觉 token。
  *
- * 这里只定义 token 的**契约**，不定义最终色值。理由：
- *   1. 我不知道 RCS 的品牌色与厦大校色规范，编一套出来就是假的；
- *   2. dsh 自带 `dsh-client-ui-theme`，最终要跟宿主主题（含深浅色）协调，
+ * 这里集中定义 token 的契约与经过验证的色值。理由：
+ *   1. brand.light 取自队徽主色实测值 #2660e5；
+ *   2. dsh 自带 `dsh-client-ui-theme`，必须跟宿主主题（含深浅色）协调，
  *      硬编码色值会在暗色模式下翻车。
  *
- * 待队内补充：把 `RCS_BRAND` 换成实际品牌色，并确认深色模式下的对应值。
+ * 深色模式保留更亮的蓝色，以维持深色背景上的可读性。
  */
 import type { Tone, RcsLayer } from './view-model.ts'
 
@@ -26,11 +26,10 @@ export interface RcsThemeTokens {
 }
 
 /**
- * 占位主题。**色值是中性占位，不是 RCS 品牌色。**
- * 换成真实品牌色时只改这个常量，所有消费方自动跟随。
+ * 队徽品牌色与语义 token。修改时只动这个常量，所有消费方自动跟随。
  */
 export const RCS_BRAND: RcsThemeTokens = {
-  brand: { light: '#2563eb', dark: '#60a5fa' },
+  brand: { light: '#2660e5', dark: '#60a5fa' },
   tone: {
     critical: { light: '#dc2626', dark: '#f87171' },
     warning: { light: '#d97706', dark: '#fbbf24' },

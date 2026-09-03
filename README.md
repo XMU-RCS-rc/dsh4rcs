@@ -136,6 +136,10 @@ npm run dsh:start      # 等打印出 dsh web 地址再开浏览器
 PowerShell 中需要留存完整日志时可用
 `npm run dsh:install 2>&1 | Tee-Object dsh-install.log`。
 
+`dsh-rcs-ui-client` 声明了浏览器端 bundle，必须先构建才可启动。正常使用
+`npm run verify` 或 `npm run dsh:install` 都会先构建；刚 clone 后不要跳过
+这两步直接运行 `dsh:start`，否则宿主会明确报告缺少 `lib/client.js`。
+
 ### tgz 安装到其它 profile
 
 `npm run dsh:install` 使用 link 布局，插件能从真实模块位置识别本仓库。若把
@@ -257,7 +261,7 @@ npm run kb:sync                        # 增量同步队内资料
 npm run verify      # typecheck → build → test（顺序不能改，见下）
 npm run typecheck   # 对着真实 dsh 类型定义检查适配层
 npm run build       # esbuild 多插件构建，检查宿主包泄漏
-npm run test        # 423 个测试
+npm run test        # 441 个测试
 ```
 
 > `verify` 的顺序是 typecheck → **build** → test：部分测试加载 `packages/*/lib` 的构建产物，先测后构建会拿到上一次的旧产物，报出令人困惑的失败。
@@ -293,7 +297,8 @@ packages/
 ├── dsh-rcs-guard/       安全层
 ├── dsh-rcs-control/     工程检查、协议解析、构建烧录
 ├── dsh-rcs-rules/       规则版本追踪与查询
-└── dsh-rcs-kb/          飞书资料同步与离线检索
+├── dsh-rcs-kb/          飞书资料同步与离线检索
+└── dsh-rcs-ui-client/   队徽与浏览器端 UI 入口
 ```
 
 **适配层刻意做薄。** dsh 处于 developer preview，API 变动只打到适配层，几百行判断逻辑与 UI 投影不受影响；而且绝大部分开发与测试**根本不用启动 dsh**。
@@ -347,7 +352,7 @@ node scripts/link-host-packages.mjs           # 修复
 | 日志解析与赛后复盘 | 一份真实日志样本 + 格式说明 |
 | `rcs_pid_advise` | 一份带调参过程的 VOFA 波形 |
 | 赛场清单 | 检录/就位/自检/下场各阶段的实际内容 |
-| UI Tier 2 面板 | RCS 品牌色（现为中性占位，**未编造**） |
+| UI Tier 2 工程看板 | Node 侧快照/订阅数据源与不覆盖宿主的面板容器 |
 
 ---
 

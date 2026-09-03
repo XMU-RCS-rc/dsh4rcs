@@ -7,7 +7,7 @@
  *
  * 那是一个独立的**前端包**（React + 自己的构建产物 + 客户端运行时），
  * 与本仓库当前的 Node 侧插件不是一回事，因此这里只定义数据契约与刷新策略，
- * 组件实现留给 `packages/dsh-rcs-ui-client/`（尚未创建）。
+ * 品牌入口已由 `packages/dsh-rcs-ui-client/` 接入侧栏；完整看板组件仍待实现。
  *
  * 为什么先定契约：面板要显示的数据必须由 Node 侧算好推过去，
  * 契约定下来，Tier 1（工具呈现）与 Tier 2（面板）就能共用同一套投影函数，
@@ -103,11 +103,8 @@ export type RcsPanelState =
 /**
  * 待补充清单（Tier 2 实现时按此推进）：
  *
- * 1. 建 `packages/dsh-rcs-ui-client/`，依赖 `@deepseek-ai/dsh-client-ui-slots`
- *    与 React，产出客户端 bundle。
- * 2. 确认要挂进哪个已声明的槽位（sidebar / settings / conversation 各有槽位），
- *    未声明的槽位注册会在 register 时直接抛错。
- * 3. 实现 `RcsDashboardSource`：Node 侧跑检查 → 经 dsh 的客户端通道推送。
- * 4. 把 theme.ts 的 `RCS_BRAND` 换成真实品牌色，并与宿主的深浅色主题对齐。
- * 5. 赛季里程碑日期在 2027 主题公布后填入 `Milestone.date`。
+ * 1. 实现 `RcsDashboardSource`：Node 侧跑检查 → 经 dsh 的客户端通道推送。
+ * 2. 为完整看板选择一个不会覆盖宿主组件的新增槽位或独立页面。
+ * 3. 把 theme.ts 的其余 token 与宿主的深浅色主题对齐。
+ * 4. 赛季里程碑日期在 2027 主题公布后填入 `Milestone.date`。
  */

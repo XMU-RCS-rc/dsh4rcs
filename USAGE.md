@@ -98,8 +98,8 @@ npm run dsh:start      # 启动 rcs-dev profile（插件已装好）
 ### 改了代码之后
 
 ```bash
-npm run verify        # typecheck + 146 个测试 + 构建
-npm run dsh:install   # 重新构建并装进 profile（当前只装 control；其余插件同理）
+npm run verify        # typecheck → 构建 → 441 个测试
+npm run dsh:install   # 重新构建并把 6 个插件装进 profile
 npm run dsh:start
 ```
 
