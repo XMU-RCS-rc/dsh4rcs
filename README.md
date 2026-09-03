@@ -141,8 +141,10 @@ dsh4rcs 整套插件默认启用。需要明确选择时，用 `npm run dsh:star
 PowerShell 中需要留存完整日志时可用
 `npm run dsh:install 2>&1 | Tee-Object dsh-install.log`。
 
-`dsh-rcs-ui-client` 声明了浏览器端 bundle，必须先构建才可启动。队徽使用 RCS
-蓝白配色，点击后在新标签页打开团队 GitHub 主页。正常使用
+`dsh-rcs-ui-client` 声明了浏览器端 bundle，必须先构建才可启动。它通过 dsh 的
+主题 token 接口为整个页面提供 RCS 蓝白主题，覆盖背景、侧栏、卡片、按钮、输入框、
+对话气泡、边框和交互态，并分别适配浅色与深色模式；队徽点击后在新标签页打开团队
+GitHub 主页。正常使用
 `npm run verify` 或 `npm run dsh:install` 都会先构建；刚 clone 后不要跳过
 这两步直接运行 `dsh:start`，否则宿主会明确报告缺少 `lib/client.js`。
 

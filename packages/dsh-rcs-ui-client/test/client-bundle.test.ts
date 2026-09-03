@@ -17,6 +17,7 @@ describe.skipIf(!hasBundle)('RCS browser UI bundle', () => {
   it('exports package.json so dsh can discover the browser half', () => {
     expect(manifest.exports['./package.json']).toBe('./package.json')
     expect(manifest.dsh.client.platform).toBe('web')
+    expect(manifest.dsh.client.inject).toContain('@deepseek-ai/dsh-client-ui-theme')
   })
 
   it('embeds the supplied emblem so installed packages need no filesystem URL', () => {
@@ -25,10 +26,15 @@ describe.skipIf(!hasBundle)('RCS browser UI bundle', () => {
     expect(Buffer.byteLength(bundle)).toBeLessThan(60_000)
   })
 
-  it('uses the RCS blue-white palette', () => {
-    expect(bundle).toContain('#2864dc')
-    expect(bundle).toContain('#174ea6')
-    expect(bundle).toContain('linear-gradient')
+  it('applies a reversible page-wide RCS blue-white theme layer', () => {
+    expect(bundle).toContain('overrideTokens')
+    expect(bundle).toContain('rcs-blue-white')
+    expect(bundle).toContain('--dsw-alias-bg-base')
+    expect(bundle).toContain('--dsw-specific-sidebar-fill')
+    expect(bundle).toContain('--dsw-specific-bubble')
+    expect(bundle).toContain('--dsw-alias-button-primary-fill')
+    expect(bundle).toContain('#f4f8ff')
+    expect(bundle).toContain('#071426')
   })
 
   it('keeps the brand entry accessible and links to the team organization', () => {

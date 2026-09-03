@@ -151,7 +151,7 @@ packages/
 - 数据经 `presentationMeta` 落到会话日志；搜索结果卡片回放有效，其余元数据等待宿主消费
 - **污染源排名**：把传递依赖链的「第一跳」聚合，回答"先修哪个文件能一次解锁最多下游文件"
 
-**Tier 2 客户端 UI（部分接入）** —— `dsh-rcs-ui-client` 已把蓝白配色的队徽作为可折叠侧栏底部入口接入 `sidebar.footer.action`，点击打开团队 GitHub 主页；图片以内嵌 data URL 随 bundle 分发，不依赖开发机路径。整套 dsh4rcs 可用 `dsh:start:rcs` / `dsh:start:no-rcs` 选择启用或关闭（切换需重启 dsh）。`rcs-ui/src/panel-contract.ts` 的完整工程看板仍只有数据契约与刷新策略，数据源和 React 看板待实现。
+**Tier 2 客户端 UI（部分接入）** —— `dsh-rcs-ui-client` 通过宿主 `theme.overrideTokens` 为整个页面覆盖背景、侧栏、卡片、按钮、输入框、对话气泡、边框和交互态，形成分别适配浅色/深色模式的 RCS 蓝白主题；队徽作为可折叠侧栏底部入口接入 `sidebar.footer.action`，点击打开团队 GitHub 主页，图片以内嵌 data URL 随 bundle 分发。整套 dsh4rcs 可用 `dsh:start:rcs` / `dsh:start:no-rcs` 选择启用或关闭（切换需重启 dsh，关闭后主题覆盖随插件生命周期清理）。`rcs-ui/src/panel-contract.ts` 的完整工程看板仍只有数据契约与刷新策略，数据源和 React 看板待实现。
 
 ---
 
@@ -201,7 +201,7 @@ packages/
 | **PC 单元测试** | ✅ **已跑通** —— `demo` 与 `template` 各 14/14（WSL 模式） |
 | 总线 ID 映射 | ⏸ 接口已留（`config/bus-map.json` + 带校验加载器），实车定版后填表即启用 |
 | 日志模块 / PID 建议 | ⏸ 契约已定，等真实日志样本与 VOFA 波形 |
-| UI 品牌入口 / 蓝白配色 | ✅ 已接入侧栏，随整套插件启停 |
+| 整页蓝白主题 / 品牌入口 | ✅ 主题 token 覆盖 + 侧栏队徽，随整套插件启停 |
 | UI 工程看板 | ⏸ 等 Node 侧快照/订阅数据源 |
 | 赛场清单 | ⏸ 等队里给实际内容 |
 | 飞书共享范围 | ⏸ 队里处理：收紧根目录可见性、把凭证类文档移出 |
