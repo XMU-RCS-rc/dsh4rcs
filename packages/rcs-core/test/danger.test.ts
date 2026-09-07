@@ -5,11 +5,14 @@
  * 每一个 L2 工具、每一种模式组合都要有明确覆盖，不靠"应该没问题"。
  */
 import { describe, it, expect } from 'vitest'
-import { decide, fieldGuard, levelOf, DEFAULT_DANGER_RULES } from '../src/danger.ts'
+import { decide, levelOf, DEFAULT_DANGER_RULES } from '../src/danger.ts'
 import type { GuardConfig } from '../src/danger.ts'
 
 const dev: GuardConfig = { mode: 'dev', rules: DEFAULT_DANGER_RULES }
-const field: GuardConfig = { mode: 'field', rules: DEFAULT_DANGER_RULES }
+const training: GuardConfig = { mode: 'training', rules: DEFAULT_DANGER_RULES }
+const ALL_MODES: GuardConfig[] = [dev, training]
+
+const LG_TOOLS = ['rcs_train_generate']
 
 const L2_TOOLS = [
   'rcs_fw_flash',
@@ -73,46 +76,99 @@ describe('decide —— 开发模式', () => {
   })
 })
 
-describe('decide —— 赛场模式（红线）', () => {
-  it('L0 仍然放行：赛场上要能查规则、查知识', () => {
-    for (const t of L0_TOOLS) expect(decide(t, field)).toEqual({ kind: 'allow' })
-  })
-
-  it('所有 L1 与 L2 一律拒绝', () => {
-    for (const t of [...L1_TOOLS, ...L2_TOOLS]) {
-      const d = decide(t, field)
-      expect(d.kind, `${t} 在赛场模式必须 deny`).toBe('deny')
+/**
+ * 赛场模式（`field`）已删除。这一组守住删除后的不变量：**没有任何一条路径产生 deny。**
+ *
+ * 单独立一个 describe 而不是就此不测，是因为「谁也拒绝不了」现在是这套判定的
+ * 一条实质承诺 —— guard 插件据此不再注册 `ctx.tools.guard()`。
+ * 哪天有人加回一个 deny 分支却没有同时加回单调拒绝，这里会先炸。
+ */
+describe('删除赛场模式后：没有任何模式会拒绝', () => {
+  it('每种模式 × 每个危险度，结果只可能是 allow 或 ask', () => {
+    const everyTool = [...L0_TOOLS, ...L1_TOOLS, ...L2_TOOLS, ...LG_TOOLS, '没登记的工具']
+    for (const config of ALL_MODES) {
+      for (const t of everyTool) {
+        expect(decide(t, config).kind, `${t} @ ${config.mode} 不该是 deny`).not.toBe('deny')
+      }
     }
   })
 
-  it('拒绝原因说明赛场只读的边界', () => {
-    const d = decide('rcs_fw_flash', field)
-    if (d.kind !== 'deny') throw new Error('应为 deny')
-    expect(d.reason).toContain('赛场模式')
-    expect(d.reason).toContain('只能查')
+  it('L1 在两种模式下都放行 —— 它当前是台账，不改变判定', () => {
+    for (const config of ALL_MODES) {
+      for (const t of L1_TOOLS) {
+        expect(decide(t, config).kind, `${t} @ ${config.mode}`).toBe('allow')
+      }
+    }
+  })
+
+  it('L2 在两种模式下都要人工确认，谁也不放过', () => {
+    for (const config of ALL_MODES) {
+      for (const t of L2_TOOLS) {
+        expect(decide(t, config).kind, `${t} @ ${config.mode}`).toBe('ask')
+      }
+    }
   })
 })
 
-describe('fieldGuard —— 不可绕过的单调拒绝', () => {
-  it('契约是返回拒绝原因字符串，不是布尔', () => {
-    const r = fieldGuard('rcs_fw_flash', field)
-    expect(typeof r).toBe('string')
-    expect(r).toContain('rcs_fw_flash')
+describe('decide —— 培训模式', () => {
+  it('L0 放行：新生要能查规则、查队内资料', () => {
+    for (const t of L0_TOOLS) expect(decide(t, training)).toEqual({ kind: 'allow' })
   })
 
-  it('放行时返回 undefined 表示不干预', () => {
-    expect(fieldGuard('rcs_lint_layer', field)).toBeUndefined()
-  })
-
-  it('开发模式下 guard 完全不干预（由 pre-execute 的 ask 负责）', () => {
-    for (const t of [...L0_TOOLS, ...L1_TOOLS, ...L2_TOOLS]) {
-      expect(fieldGuard(t, dev), `${t} 在 dev 模式不应被 guard 挡`).toBeUndefined()
+  it('L1 放行 —— 构建与跑测试是学习循环的核心，卡住它整套培训就失效', () => {
+    for (const t of L1_TOOLS) {
+      expect(decide(t, training).kind, `${t} 在培训模式必须放行`).toBe('allow')
     }
   })
 
-  it('赛场模式挡住每一个 L2 工具', () => {
+  it('L2 物理动作需人工确认，**不是拒绝** —— 培训一样要烧代码、也用 F407', () => {
     for (const t of L2_TOOLS) {
-      expect(fieldGuard(t, field), `${t} 必须被挡`).toBeTruthy()
+      const d = decide(t, training)
+      expect(d.kind, `${t} 在培训模式应为 ask 而非 deny`).toBe('ask')
+    }
+  })
+
+  it('烧录在培训模式下可用 —— 拦死它整套培训就跑不起来', () => {
+    expect(decide('rcs_fw_flash', training).kind).toBe('ask')
+  })
+
+  it('L2 确认文案保留急停/使能线/限位，并要求第一次有人在旁', () => {
+    const d = decide('rcs_pneumatic_fire', training)
+    if (d.kind !== 'ask') throw new Error('应为 ask')
+    expect(d.reason).toContain('急停')
+    expect(d.reason).toContain('限位')
+    expect(d.reason).toContain('软件停止不能替代硬件急停')
+    expect(d.reason).toContain('老队员在旁边')
+  })
+
+  it('LG 代码生成需要人工确认，而不是直接放行或直接拒死', () => {
+    for (const t of LG_TOOLS) {
+      const d = decide(t, training)
+      expect(d.kind, `${t} 在培训模式应为 ask`).toBe('ask')
+    }
+  })
+
+  it('LG 的确认提示是教学提问，不是恐吓', () => {
+    const d = decide('rcs_train_generate', training)
+    if (d.kind !== 'ask') throw new Error('应为 ask')
+    expect(d.reason).toContain('骨架跑起来了吗')
+    expect(d.reason).toContain('验收')
+  })
+
+  it('LG 在开发模式放行 —— 老队员用它备课不该被拦', () => {
+    for (const t of LG_TOOLS) expect(decide(t, dev).kind).toBe('allow')
+  })
+
+  it('rcs_train_scaffold 属于 L1（会往学员目录写文件），培训模式放行', () => {
+    expect(levelOf('rcs_train_scaffold', training)).toBe('L1')
+    expect(decide('rcs_train_scaffold', training).kind).toBe('allow')
+  })
+
+  it('只读的培训工具不该被登记为危险', () => {
+    const registered = new Set(DEFAULT_DANGER_RULES.map((r) => r.tool))
+    for (const t of ['rcs_train_task', 'rcs_train_quiz', 'rcs_train_review', 'rcs_train_progress']) {
+      expect(registered.has(t), `${t} 是只读工具，不该登记`).toBe(false)
+      expect(decide(t, training).kind).toBe('allow')
     }
   })
 })

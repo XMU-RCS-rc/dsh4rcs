@@ -7,8 +7,11 @@
  * 而这正是最容易写错、又最不能出错的地方（它管的是物理危险操作）。
  *
  * `tools` 服务用一个最小 Service 桩：真实的 `ToolRuntime` 还依赖
- * systemPrompt 等一串服务，为验证 guard 而拉起整条链不划算，
- * 且 guard 只用到 `tools.guard()` 这一个面。
+ * systemPrompt 等一串服务，为验证本插件而拉起整条链不划算。
+ *
+ * 桩仍然保留 `guard()`，不是因为插件要用它 —— 赛场模式删除后它已经不注册
+ * 单调拒绝了 —— 而是为了能断言「一个都没注册」。那是删除后的实质承诺，
+ * 只有桩接得住这个调用，才能区分「没注册」和「注册了但桩没接住」。
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { existsSync } from 'node:fs'
@@ -39,7 +42,7 @@ class FakeTools extends Service {
   }
 }
 
-async function bootGuard(mode: 'dev' | 'field', extraL2: string[] = []): Promise<Context> {
+async function bootGuard(mode: 'dev' | 'training', extraL2: string[] = []): Promise<Context> {
   registeredGuards = []
   const mod = await import(pathToFileURL(BUNDLE).href)
   const ctx = new Context()
@@ -85,7 +88,7 @@ describe.skipIf(!ready)('guard 在开发模式', () => {
     expect((await preExecute(ctx, 'rcs_fw_build')).kind).toBe('allow')
   })
 
-  it('开发模式不注册 guard —— 单调拒绝只属于赛场', () => {
+  it('不注册单调拒绝 —— 现存模式没有任何硬性拒绝', () => {
     expect(registeredGuards).toHaveLength(0)
   })
 
@@ -95,32 +98,41 @@ describe.skipIf(!ready)('guard 在开发模式', () => {
   })
 })
 
-describe.skipIf(!ready)('guard 在赛场模式（红线）', () => {
+describe.skipIf(!ready)('guard 在培训模式', () => {
   let ctx: Context
   beforeEach(async () => {
-    ctx = await bootGuard('field')
+    ctx = await bootGuard('training')
   })
 
-  it('L0 仍放行：赛场上必须能查规则', async () => {
+  it('L0 放行：新生要能查规则、查队内资料', async () => {
     expect((await preExecute(ctx, 'rcs_rule_lookup')).kind).toBe('allow')
   })
 
-  it('L2 一律拒绝', async () => {
+  it('L1 放行 —— 构建与跑测试是学习循环的核心', async () => {
+    expect((await preExecute(ctx, 'rcs_fw_build')).kind).toBe('allow')
+  })
+
+  it('L2 物理动作需人工确认，文案要求第一次有人在旁', async () => {
     const d = await preExecute(ctx, 'rcs_fw_flash')
-    expect(d.kind).toBe('deny')
-    expect(d.reason).toContain('赛场模式')
+    expect(d.kind).toBe('ask')
+    expect(d.reason).toContain('老队员在旁边')
   })
 
-  it('L1 同样拒绝', async () => {
-    expect((await preExecute(ctx, 'rcs_fw_build')).kind).toBe('deny')
+  it('LG 代码生成需过闸门', async () => {
+    const d = await preExecute(ctx, 'rcs_train_generate')
+    expect(d.kind).toBe('ask')
+    expect(d.reason).toContain('骨架跑起来了吗')
   })
 
-  it('注册了不可绕过的 guard，且返回拒绝原因字符串而非布尔', () => {
-    expect(registeredGuards).toHaveLength(1)
-    const g = registeredGuards[0]!
-    const r = g({ name: 'rcs_pneumatic_fire' })
-    expect(typeof r).toBe('string')
-    expect(r).toContain('赛场模式')
-    expect(g({ name: 'rcs_lint_layer' })).toBeUndefined()
+  // 赛场模式删除后，两种模式都不再注册单调拒绝。这条与 dev 那条成对，
+  // 少任何一条都留得下「只在某个模式漏注册」的缺口。
+  it('同样不注册单调拒绝', () => {
+    expect(registeredGuards).toHaveLength(0)
+  })
+
+  it('没有任何工具会被拒绝', async () => {
+    for (const t of ['rcs_rule_lookup', 'rcs_fw_build', 'rcs_fw_flash', 'rcs_train_generate']) {
+      expect((await preExecute(ctx, t)).kind, `${t} 不该是 deny`).not.toBe('deny')
+    }
   })
 })

@@ -1,5 +1,13 @@
 # dsh4rcs — 厦门大学机器人队（RCS）DeepSeek Harness 插件功能设计
 
+> 文档版本：v0.6（2026-09-07）
+>
+> **v0.6 关键变更：删除赛场模式（M5 的 guard 部分）。** 队内确认赛场不会有太多
+> 网络方面的顾虑，`field` 模式的立论前提不成立；且它按工具名只覆盖 `rcs_*`，
+> 挡不住宿主自带的 `bash`/`pwsh`/`write`，属于挡不住的红线。guard 现只剩
+> `dev` / `training` 两档，均不产生拒绝，也不再注册 `ctx.tools.guard()`。
+> 第五节 M5、第七节 profile 表、第九节代码示例已相应标注；其余历史章节保持原样。
+>
 > 文档版本：v0.5（2026-08-27）
 > **范围：仅 ROBOCON 竞技赛，面向 2027 赛季（第二十六届）。RoboCup 暂缓，保留在附录 A。**
 >
@@ -313,7 +321,12 @@ data/rules/
 
 ---
 
-### M5 · `dsh-rcs-field` —— 赛场模式【P2，赛前必须就绪 · guard 的 field 模式已就绪】
+### M5 · `dsh-rcs-field` —— 赛场模式【❌ v0.6 撤销 · 仅清单类工具保留为待议】
+
+> **v0.6：本节的 guard 部分已作废。** `field` 模式已从代码中删除 ——
+> 赛场没有太多网络顾虑，而且它只按工具名覆盖 `rcs_*`，挡不住宿主自带的
+> `bash` / `pwsh` / `write`。下面的「只读 + 完全离线」红线**不再成立**，
+> 保留原文只为记录当时的判断。表中四个清单类工具与 guard 无关，仍属待议。
 
 | 工具 | 作用 |
 |---|---|
@@ -324,7 +337,7 @@ data/rules/
 
 **关键设计（红线）**
 
-- **`rcs-field` profile 下 `ctx.tools.guard()` 全局禁掉所有 L1/L2 工具**——赛场上 Agent 只能查，不能改、不能烧录、不能动气路。
+- ~~**`rcs-field` profile 下 `ctx.tools.guard()` 全局禁掉所有 L1/L2 工具**~~ —— **v0.6 撤销**，理由见本节开头。
 - **完全离线**：规则、清单、知识库镜像全部本地文件，**不依赖飞书 API**。
 - 可配合社区插件 `dsh-tier-router`，赛场用小模型/本地模型降低延迟。
 
@@ -389,10 +402,9 @@ ctx.on('tools/pre-execute', async (exec, next) => {
   return d
 })
 
-// 赛场模式的单调拒绝：在 pre-execute 之后，任何插件都绕不过
-if (config.mode === 'field') {
-  ctx.tools.guard((exec) => fieldGuard(exec.name, guardConfig))
-}
+// v0.6 起不再有这一段：`field` 模式删除后没有任何拒绝路径，
+// 因此也不注册 ctx.tools.guard()。要重新引入硬拒绝，
+// 先解决「只覆盖 rcs_*、挡不住 bash」的覆盖面问题。
 ```
 
 ### 其它安全要求
@@ -409,7 +421,7 @@ if (config.mode === 'field') {
 | Profile | 使用者 | 组成 bundle | 特点 |
 |---|---|---|---|
 | `rcs-dev` | 电控/软件组日常 | core + guard + kb + rules + control + log + ops | 全功能，L2 需确认 |
-| `rcs-field` | 赛场 | core + guard(field) + rules + field + log | **只读 + 完全离线** |
+| ~~`rcs-field`~~ | ~~赛场~~ | — | **v0.6 撤销**：`field` 模式已删除 |
 | `rcs-newbie` | 新队员 | core + guard + kb + rules + onboard | 无危险工具，重引导 |
 
 ```bash
@@ -461,7 +473,7 @@ dsh4rcs/
 |---|---|---|
 | **已完成** | M0 core、M2 rules（diff/lookup/check）、M3 第一梯队 + `rcs_lint_embedded`、guard 安全层 | ✅ 全部装入 `rcs-dev` profile，146 个测试通过 |
 | **待外部输入** | M1 kb（飞书授权）、M3 第二三梯队（工具链/实车信息）、M4 log（日志样本）、UI 面板（品牌色） | ⏸ 见第十二节 |
-| **赛前必做** | M5 field 的清单与速查内容 | 赛场只读模式的 guard 已就绪，缺的是清单数据 |
+| **赛前必做** | M5 的清单与速查内容 | v0.6 起赛场只读模式已撤销；清单数据本身仍未提供 |
 | **可随时做** | M6 onboard（step1~step8 已在 `请读我.txt`）、M7 ops | 不阻塞 |
 
 **V1 规则一发布就该做的第一件事**：
@@ -502,7 +514,7 @@ npm run dsh:start          # 然后让 Agent 跑 rcs_rule_diff V0 V1
 | **分层约定只靠口头维持** | 主题代码混进公共库，重蹈 R2 覆辙 | `rcs_lint_layer` 放进 P0，把约定变成检查 |
 | **R2 赛季实战代码无版本控制** | 唯一实战资产可能丢失 | 立即建仓归档；`rcs_repo_hygiene` 查 `.gitignore` |
 | **2027 主题可能大改赛制** | 部分工具假设失效 | P0 只做主题无关模块；M2 数据目录与代码解耦 |
-| **气动物理事故** | 伤人、损机 | 三级权限 + `guard()` + 赛场只读 + 失电安全态检查；软件保护不替代硬件急停 |
+| **气动物理事故** | 伤人、损机 | 危险分级 + L2 人工确认 + 失电安全态检查；软件保护不替代硬件急停。**注意 guard 只覆盖 `rcs_*`，不是沙箱**（v0.6） |
 | **插件本身断代** | 明年又成祖传代码 | `CONTRIBUTING.md` + `HANDOVER.md`；每模块 2 名维护人（一大三一大二） |
 | **API 成本** | 队费有限 | `dsh-cost-meter` 监控；`dsh-tier-router` 分层 |
 | **dsh 处于 preview，API 变动** | 插件被破坏 | 锁定 dsh 版本；写集成测试 |
@@ -525,8 +537,8 @@ npm run dsh:start          # 然后让 Agent 跑 rcs_rule_diff V0 V1
 | M3 三梯队 | `rcs_toolchain_status` · `rcs_support_test`(L1) · `rcs_fw_build`(L1) · `rcs_fw_flash`(L2) |
 
 危险操作由 `rcs-guard` 统一管控。值得记一笔：这三个 L1/L2 工具**在实现之前
-就已登记在危险清单里**，落地当天就自动受管控 —— 实测 dev 模式烧录需人工确认、
-赛场模式三者全部硬拒，**分级代码一行没改**。
+就已登记在危险清单里**，落地当天就自动受管控 —— 实测烧录需人工确认、
+构建与跑测试放行，**分级代码一行没改**。
 
 ### 二梯队查出的真问题
 

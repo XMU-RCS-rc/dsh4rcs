@@ -238,7 +238,7 @@ export function apply(ctx: Context, config: Config): void {
         description:
           '检查手上这套东西是不是过时了：规则书版本、插件代码、dsh 宿主。' +
           '**只报告，不会自动升级或拉取任何东西。** 回答"我这份是不是旧的/要不要更新"时调它。' +
-          '赛场模式下被安全层拦掉（联网 + 落盘）。',
+          '会联网（git ls-remote + npm registry）并写本地缓存，默认读 24 小时内的结果。',
         parameters: {
           refresh: {
             type: 'boolean',

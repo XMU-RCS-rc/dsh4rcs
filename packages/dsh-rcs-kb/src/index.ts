@@ -3,15 +3,16 @@
  *
  * ## 三条设计约束
  *
- * 1. **同步与检索解耦。** 赛场网络差、飞书随时可能不可达，而那时最需要查资料。
- *    所以检索永远读本地镜像，绝不实时打 API。同步是另一件事，另一个工具。
+ * 1. **同步与检索解耦。** 飞书 API 随时可能不可达、限频或改版，而查资料
+ *    这件事不该受它牵连。所以检索永远读本地镜像，绝不实时打 API。
+ *    同步是另一件事，另一个工具。
  *
  * 2. **范围收敛在本地白名单。** 实测应用能读到整个共享文件夹根目录（含机械、
  *    运营、赛务），飞书侧没有做到目录级隔离。于是 `feishu.sources` 这份清单
  *    **就是授权范围本身**，同步器只遍历它的子树，越界当场抛。
  *
- * 3. **同步是 L1 操作。** 它出网 + 落盘，赛场模式一律拒绝
- *    （见 `rcs-core/danger.ts`）。检索是 L0，任何时候都能用。
+ * 3. **同步是 L1 操作**（出网 + 落盘，见 `rcs-core/danger.ts`），检索是 L0。
+ *    当前两种 guard 模式都放行 L1，这个分级眼下只是台账，不改变判定。
  *
  * 适配层照例做薄：判断逻辑全在 `@rcs/core` 的 `kb-sync` / `kb-index` 里，
  * 这里只负责包成 Tool 和渲染。
@@ -137,7 +138,7 @@ function renderStatus(s: KbStatus): string {
     `文档 ${s.total} 篇（其中 ${s.failed} 篇抓取失败）  正文合计 ${kb} KB\n` +
     `授权范围：${s.sources.map((x) => x.label).join('、')}\n` +
     (skipped.length > 0 ? `按类型跳过：${skipped.map(([k, n]) => `${k}×${n}`).join('  ')}\n` : '') +
-    `\n检索走本地镜像，不联网 —— 赛场断网时依然可用。`
+    `\n检索走本地镜像，不联网 —— 没网也能查。`
   )
 }
 
@@ -234,7 +235,7 @@ export function apply(ctx: Context, config: Config): void {
       name: 'rcs_kb_search',
       description:
         '检索队内飞书资料的**本地镜像**（电控组文档、历年技术积累、培训资料等）。' +
-        '完全离线，不联网 —— 赛场断网时照样能用。' +
+        '完全离线，不联网 —— 没网也照样能用。' +
         '查不到时要注意区分「镜像里没有」和「队里没有」：前者可能只是还没同步。',
       parameters: {
         query: { type: 'string', required: true, description: '检索关键词，支持中文' },
@@ -314,7 +315,7 @@ export function apply(ctx: Context, config: Config): void {
     defineTool({
       name: 'rcs_kb_sync',
       description:
-        '把队内飞书资料同步到本地镜像。**联网 + 写盘**，属 L1 操作，赛场模式禁止。' +
+        '把队内飞书资料同步到本地镜像。**联网 + 写盘**，属 L1 操作。' +
         '只遍历 config/team.json 里 feishu.sources 列出的目录子树 —— 那份清单就是授权范围。' +
         '增量同步：文档没改过就不重抓。',
       parameters: {

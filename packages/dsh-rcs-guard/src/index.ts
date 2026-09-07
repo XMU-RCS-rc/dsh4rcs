@@ -3,9 +3,9 @@
  *
  * ## 为什么权限逻辑不写在工具里
  *
- * 官方建议就是这样：把 allow/deny/ask 放进 `tools/pre-execute` 钩子，
- * 把最终的单调拒绝放进 `ctx.tools.guard()`。好处是策略可扩展、可审计，
- * 而且**新工具天然被纳入管控**，不用每个工具各写一遍。
+ * 官方建议就是这样：把 allow/deny/ask 放进 `tools/pre-execute` 钩子。
+ * 好处是策略可扩展、可审计，而且**新的 rcs 工具天然被纳入管控**，
+ * 不用每个工具各写一遍。
  *
  * ## 两处与文档示例不同的真实 API（已对照 rc.6 的 .d.ts 核实）
  *
@@ -13,31 +13,40 @@
  *      `(exec, next) => Promise<PreToolDecision>`，不是简单的 bail。
  *      `next()` 代表委托给下游/默认放行。
  *   2. `PreToolDecision` 是**对象**：`{kind:'allow'} | {kind:'deny',reason} | {kind:'ask',reason?}`。
- *   3. `ToolGuard` 返回**拒绝原因字符串**（undefined 表示不干预），不是布尔。
  *
- * ## 红线
+ * ## 这一层能做什么、不能做什么
  *
- * `mode: 'field'` 下所有 L1/L2 工具一律拒绝。赛场上 Agent 只能查。
+ * 它只会**要求人工确认**，不会拒绝任何调用 —— 赛场模式删除后已没有硬性拒绝，
+ * 因此也不再注册 `ctx.tools.guard()`。
+ *
+ * 更要紧的是它的**覆盖面**：判定按工具名精确匹配，只认 `rcs_*`。
+ * profile 里同时装着宿主自带的 `bash` / `pwsh` / `write` / `edit`，
+ * 那些**不经过本插件**。所以这一层挡不住 `bash python swd_flash.py --write`，
+ * 它是给 rcs 工具加的一道提醒，不是沙箱。别把它当边界来依赖。
+ *
  * 并且：**软件保护永远不替代硬件急停**（规则 12.2 强制要求红色急停按钮）。
  */
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 
-import { decide, fieldGuard, levelOf, DEFAULT_DANGER_RULES } from '../../rcs-core/src/danger.ts'
+import { decide, levelOf, DEFAULT_DANGER_RULES } from '../../rcs-core/src/danger.ts'
 import type { GuardConfig, GuardMode } from '../../rcs-core/src/danger.ts'
 
 export const name = 'rcs-guard'
 export const inject = ['tools']
 
 export interface Config {
-  /** dev：L2 需人工确认；field：L1/L2 一律拒绝。 */
+  /**
+   * dev      L2 物理动作需人工确认
+   * training 同 dev，另加：L2 的确认文案更重、LG 代码生成需过闸门
+   */
   mode: GuardMode
   /** 额外提升为 L2 的工具名。 */
   extraL2: string[]
 }
 
 export const Config: Schema<Config> = Schema.object({
-  mode: Schema.union(['dev', 'field'] as const).default('dev'),
+  mode: Schema.union(['dev', 'training'] as const).default('dev'),
   extraL2: Schema.array(Schema.string()).default([]),
 })
 
@@ -71,25 +80,28 @@ export function apply(ctx: Context, config: Config): void {
     },
   )
 
-  // ---- 第二道：赛场模式的单调拒绝 ----
-  // guard 在 pre-execute 之后、且任何插件都绕不过。赛场红线放这里才算数。
-  if (config.mode === 'field') {
-    ctx.tools.guard((exec: PendingCall) => fieldGuard(exec.name, guardConfig))
-  }
+  // 这里**不注册** `ctx.tools.guard()`（不可绕过的单调拒绝）。
+  // 那道机制是给「一律拒绝」用的，而现存两种模式都只到 ask 为止：
+  // 培训的约束是人在回路里确认，不是拦死 —— 学生要烧代码、要用 F407。
+  // 要重新引入硬拒绝，先解决上面文件头写的覆盖面问题，否则挡不住 bash。
 
   // ---- 启动时把生效策略打出来 ----
   // 安全配置最怕「以为开了其实没开」，所以加载即自报家门。
   const l2 = DEFAULT_DANGER_RULES.filter((r) => levelOf(r.tool, guardConfig) === 'L2').map(
     (r) => r.tool,
   )
+  const lg = DEFAULT_DANGER_RULES.filter((r) => levelOf(r.tool, guardConfig) === 'LG').map(
+    (r) => r.tool,
+  )
   const banner =
-    config.mode === 'field'
-      ? `[rcs-guard] 赛场模式：所有 L1/L2 工具一律拒绝（含 ${l2.length} 个物理动作工具）`
+    config.mode === 'training'
+      ? `[rcs-guard] 培训模式：${l2.length} 个物理动作工具需人工确认（烧录可用）；` +
+        `构建与跑测试放行；${lg.length} 个代码生成工具需过闸门 —— ${lg.join(', ')}`
       : `[rcs-guard] 开发模式：${l2.length} 个物理动作工具需人工确认 —— ${l2.join(', ')}`
   console.info(banner)
 
   ctx.effect(() => {
-    // 事件监听与 guard 都是经 ctx 注册的，插件卸载时框架自动回收。
+    // 事件监听是经 ctx 注册的，插件卸载时框架自动回收。
     // 这里只留占位，将来若加外部审计上报，务必在此注销。
     return () => {}
   })

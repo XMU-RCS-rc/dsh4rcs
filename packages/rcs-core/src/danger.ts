@@ -12,11 +12,32 @@
  * 所以判定逻辑单独成层、单独测试，不埋在 dsh 适配层里。
  */
 
-/** 危险级别。 */
-export type DangerLevel = 'L0' | 'L1' | 'L2'
+/**
+ * 危险级别。
+ *
+ * LG（代码生成）是为培训模式引入的**第四档**，它不涉及人身安全，而涉及**教学有效性**：
+ * 一个会写代码的 Agent 是「什么都不学就让机器人动起来」的最快路径，
+ * 而那恰恰取消了机器人比赛的意义。所以它单独成档，只在培训模式下受限。
+ */
+export type DangerLevel = 'L0' | 'L1' | 'L2' | 'LG'
 
-/** 运行模式。赛场模式下一切写操作与物理动作都禁止。 */
-export type GuardMode = 'dev' | 'field'
+/**
+ * 运行模式。
+ *
+ *   dev       开发模式 —— 老队员日常使用：物理动作需人工确认，其余放行
+ *   training  培训模式 —— 新生使用：本机写放行（学习循环要顺畅），
+ *             物理动作需人工确认，代码生成需过闸门
+ *
+ * 曾经有第三档 `field`（赛场模式），把一切非只读操作硬性拒绝，理由是赛场
+ * 网络不可靠、现场只该查不该改。**已删除**，因为那个前提不成立：队里确认
+ * 赛场不会有太多网络方面的顾虑，为此保留一整套拒绝路径不值得。
+ *
+ * 它还带着一个说不出口的问题：guard 只按工具名精确匹配 `rcs_*`，而 profile
+ * 里同时装着宿主自带的 `bash` / `pwsh` / `write`，赛场模式挡不住
+ * `bash python swd_flash.py --write`。一条挡不住的红线比没有红线更危险 ——
+ * 它让人以为自己被保护着。要重新引入受限模式，得先解决这个覆盖面问题。
+ */
+export type GuardMode = 'dev' | 'training'
 
 export type DangerRule = {
   /** 工具名，精确匹配。 */
@@ -26,7 +47,12 @@ export type DangerRule = {
   reason: string
 }
 
-/** 判定结果。与 dsh 的 PreToolDecision 对齐：allow / deny / ask。 */
+/**
+ * 判定结果。与 dsh 的 PreToolDecision 对齐：allow / deny / ask。
+ *
+ * `deny` 目前**没有任何代码路径会产生** —— 赛场模式删除后不再有硬性拒绝。
+ * 保留它是因为本类型要对齐宿主的 PreToolDecision，不是为了留后路。
+ */
 export type Decision =
   | { kind: 'allow' }
   | { kind: 'deny'; reason: string }
@@ -51,25 +77,43 @@ export const DEFAULT_DANGER_RULES: DangerRule[] = [
   { tool: 'rcs_serial_write', level: 'L2', reason: '串口下发可能触发下位机动作' },
 
   // ---- L1 本机写 ----
+  //
+  // 注意：赛场模式删除后，**L1 在 dev 与 training 下都是放行**，
+  // 也就是说它当前不改变任何一次判定，与 L0 的实际效果相同。
+  // 仍然登记，是因为这份清单同时是「哪些工具会出网或落盘」的台账 ——
+  // 启动横幅和人工审阅都读它。判定与台账是两件事，不要因为前者用不上就删后者。
   { tool: 'rcs_fw_build', level: 'L1', reason: '构建会改写产物目录' },
   {
     tool: 'rcs_kb_sync',
     level: 'L1',
     reason:
-      '同步会联网拉取队内飞书文档并写入本地镜像 —— 既出网又落盘。' +
-      '赛场上禁止：网络不可靠，且赛场只该查已有镜像，不该改它',
+      '同步会联网拉取队内飞书文档并写入本地镜像 —— 既出网又落盘，' +
+      '而且会按飞书当前状态删掉本地已不存在的文档',
   },
   { tool: 'rcs_support_test', level: 'L1', reason: '会在本机运行测试进程' },
   {
     tool: 'rcs_version_status',
     level: 'L1',
     reason:
-      '新鲜度检查会联网（git ls-remote + npm registry）并写本地缓存 —— 与 rcs_kb_sync 同类。' +
-      '赛场上拦掉：那时网络不可靠，而且「插件落后了两个提交」这种信息，' +
-      '在检录台上既做不了什么也不该分散注意力',
+      '新鲜度检查会联网（git ls-remote + npm registry）并写本地缓存 —— 与 rcs_kb_sync 同类',
   },
   { tool: 'rcs_serial_monitor', level: 'L1', reason: '会占用串口设备' },
   { tool: 'rcs_sim_launch', level: 'L1', reason: '会拉起仿真进程' },
+  {
+    tool: 'rcs_train_scaffold',
+    level: 'L1',
+    reason: '会把任务模板与测试写进学员的工作目录',
+  },
+
+  // ---- LG 代码生成 ----
+  {
+    tool: 'rcs_train_generate',
+    level: 'LG',
+    reason:
+      '直接给出完整实现。培训模式下需过闸门并打水印 —— ' +
+      '不是为了防止抄（新生完全可以另开网页版问，锁是拦不住的），' +
+      '而是为了让「自己写」成为更省力的那条路，并让绕过留下痕迹',
+  },
 ]
 
 export type GuardConfig = {
@@ -93,9 +137,18 @@ function reasonOf(tool: string, config: GuardConfig): string {
 /**
  * 判定一次工具调用。
  *
- *   L0  只读        → 放行
- *   L1  本机写      → dev 放行（由 dsh 自身的审批体系管），field 拒绝
- *   L2  物理动作    → dev 强制人工确认，field 一律拒绝
+ *              dev              training
+ *   L0 只读     放行             放行
+ *   L1 本机写   放行             放行
+ *   L2 物理     人工确认         人工确认（文案更重）
+ *   LG 生成     放行             **人工确认 + 闸门**
+ *
+ * 没有任何一格是拒绝。培训与开发的差别只有两处：
+ *   1. L2 的确认文案更重 —— 多一句「第一次做请让老队员在旁边」。新生正是
+ *      最容易低估急停、使能线、限位的那批人，每次弹一下把要点重复成肌肉记忆。
+ *   2. LG 代码生成要过闸门 —— 直接拿到答案会让那道题失去意义。
+ *
+ * L1 在两种模式下都放行：构建与跑测试是学习循环的核心，卡住它整套培训就失效了。
  */
 export function decide(tool: string, config: GuardConfig): Decision {
   const level = levelOf(tool, config)
@@ -103,13 +156,33 @@ export function decide(tool: string, config: GuardConfig): Decision {
 
   const why = reasonOf(tool, config)
 
-  if (config.mode === 'field') {
-    return {
-      kind: 'deny',
-      reason:
-        `赛场模式禁止 ${level} 操作：${tool} —— ${why}。` +
-        `赛场上 Agent 只能查，不能改、不能烧录、不能动气路。`,
+  if (config.mode === 'training') {
+    if (level === 'L2') {
+      // 培训一样要烧代码、也会用到 F407，所以这里**不能拦死** ——
+      // 拦死就等于让整套培训跑不起来。
+      //
+      // 但确认这一步保留：烧录是物理动作，而新生正是最容易低估
+      // 急停、使能线、限位的那批人。每次弹一下，把安全要点重复成肌肉记忆，
+      // 这正是培训场景该做的事。
+      return {
+        kind: 'ask',
+        reason:
+          `${tool} 是物理动作：${why}。` +
+          `执行前请确认周围无人、机构行程内无手、气路已泄压。` +
+          `注意：软件停止不能替代硬件急停、驱动使能线和限位保护。` +
+          `第一次做请让老队员在旁边，并当面指认急停按钮在哪里。`,
+      }
     }
+    if (level === 'LG') {
+      return {
+        kind: 'ask',
+        reason:
+          `${tool} 会直接给出完整实现：${why}。` +
+          `确认前请先自问：骨架跑起来了吗？测试红在哪一行？` +
+          `直接拿到答案会让这道题失去意义，而验收时老队员会追问每一行的理由。`,
+      }
+    }
+    return { kind: 'allow' }
   }
 
   if (level === 'L2') {
@@ -123,20 +196,4 @@ export function decide(tool: string, config: GuardConfig): Decision {
   }
 
   return { kind: 'allow' }
-}
-
-/**
- * 赛场模式下的单调拒绝（对应 `ctx.tools.guard()`）。
- *
- * 返回拒绝原因字符串表示挡下，返回 undefined 表示不干预 ——
- * 这是 dsh 的 `ToolGuard` 契约，注意**不是布尔**。
- *
- * 它比 `tools/pre-execute` 更靠后且不可被其它插件绕过，
- * 所以赛场红线放在这里，而不是只放在事件里。
- */
-export function fieldGuard(tool: string, config: GuardConfig): string | undefined {
-  if (config.mode !== 'field') return undefined
-  const level = levelOf(tool, config)
-  if (level === 'L0') return undefined
-  return `赛场模式：${tool}（${level}）已被硬性阻止 —— ${reasonOf(tool, config)}`
 }

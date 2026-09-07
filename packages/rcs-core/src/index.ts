@@ -89,7 +89,8 @@ export {
 export type {
   ActuatorKind, BusEntry, BusMap, BusMapLoad, LogRecord, LogParseResult, PidSample,
 } from './vehicle-contract.ts'
-export { decide, fieldGuard, levelOf, DEFAULT_DANGER_RULES } from './danger.ts'
+export { decide, levelOf, DEFAULT_DANGER_RULES } from './danger.ts'
+export { checkCurriculum, findTask, nextTask, unlockedTasks } from './training.ts'
 export { lintEmbedded, findFunctions, DEFAULT_EMBEDDED_RULES } from './lint-embedded.ts'
 export {
   importRulebook, scaffoldConstraints, paragraphs, toClauses,
@@ -98,6 +99,7 @@ export {
 export type { ImportResult, ImportedClause } from './rule-import.ts'
 export type { EmbeddedRule, EmbeddedLintOptions } from './lint-embedded.ts'
 export type { DangerLevel, GuardMode, DangerRule, Decision, GuardConfig } from './danger.ts'
+export type { Curriculum, TrainingTask, TrainingStage, TrainingKind, TrainingAcceptance, CurriculumCheck } from './training.ts'
 export type {
   TeamConfig, RobotSpec, RobotId, Milestone, FirmwareInfo, FeishuConfig,
 } from './team-context.ts'

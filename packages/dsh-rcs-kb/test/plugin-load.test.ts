@@ -125,13 +125,13 @@ describe.skipIf(!hasBundle)('知识库插件可加载', () => {
     expect(JSON.stringify(c)).not.toMatch(/secret["']?\s*:\s*["'][A-Za-z0-9]{20,}/)
   })
 
-  it('检索工具的描述里写明它是离线的 —— 赛场能不能用是关键信息', () => {
+  it('检索工具的描述里写明它是离线的 —— 能不能离线用是关键信息', () => {
     expect(tool('rcs_kb_search')!.description).toMatch(/离线|不联网/)
   })
 
   it('同步工具的描述里标明它联网且写盘', () => {
     expect(tool('rcs_kb_sync')!.description).toMatch(/联网/)
-    expect(tool('rcs_kb_sync')!.description).toMatch(/赛场/)
+    expect(tool('rcs_kb_sync')!.description).toMatch(/写盘/)
   })
 })
 
