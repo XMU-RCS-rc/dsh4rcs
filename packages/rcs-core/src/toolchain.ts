@@ -268,6 +268,25 @@ export function projectCompilerVersion(uvprojxXml: string): string | undefined {
 }
 
 /**
+ * 从 `.uvprojx` 推出构建产物 `.bin` 的**相对路径**（相对工程文件所在目录）。
+ *
+ * 为什么必须推而不能写死：队内仓库里有 `demo`、`demo_function_dispatch`、
+ * `template/RCS_Template_F407` 三个工程，**产物文件名完全相同**
+ * （都是 `RCS_Template_F407/RCS_Template_F407.bin`）。写死一个名字，
+ * 换工程时会静默指向另一个工程的同名产物 —— 而这是要烧进板子的文件。
+ *
+ * 解析 `<OutputDirectory>`（相对工程目录，Keil 用反斜杠）与 `<OutputName>`。
+ * 任一缺失返回 undefined，由调用方明确报错，绝不猜。
+ */
+export function projectOutputBinary(uvprojxXml: string): string | undefined {
+  const dir = /<OutputDirectory>([^<]*)<\/OutputDirectory>/.exec(uvprojxXml)?.[1]
+  const name = /<OutputName>([^<]*)<\/OutputName>/.exec(uvprojxXml)?.[1]
+  if (dir === undefined || !name) return undefined
+  const normalized = dir.replace(/\\/g, '/').replace(/\/+$/, '')
+  return normalized ? `${normalized}/${name}.bin` : `${name}.bin`
+}
+
+/**
  * Keil **自带**的 Arm Compiler 版本 —— 从 `TOOLS.INI` 的 release notes 条目里读。
  *
  * 为什么不去枚举 `D:/keil/ArmCompiler_V*` 目录：那些是**单独安装**的版本，
@@ -675,16 +694,79 @@ export type FlashResult = {
 }
 
 export type FlashOptions = {
-  /** `upper_host_cli/swd_flash.py` 路径。 */
+  /** `swd_flash.py` 的完整路径。由调用方解析后传入，本层不猜。 */
   script: string
-  /** 待烧录的 .bin；不给用脚本默认值。 */
-  binary?: string
+  /**
+   * 待烧录的 `.bin`，**必填**。
+   *
+   * 早先它是可选的，缺省时不传 `--bin`，由 `swd_flash.py` 自己决定烧什么。
+   * 那是个隐患：脚本里 `BUILD_DIR` 是**相对脚本自身位置**解析的
+   * （`<脚本目录>/../MDK-ARM/RCS_Template_F407/`），而队内仓库有三个工程，
+   * 产物文件名完全相同。于是「构建 demo、烧录 demo_function_dispatch 的旧产物」
+   * 这条路径成立，且两边文件同名，看不出任何异常。
+   *
+   * 烧录是 L2 物理动作，烧错固件意味着机器人跑的是另一套逻辑。
+   * 所以这里改成必填、且**永远显式传 `--bin`**，把「烧哪个文件」这件事
+   * 从脚本的隐式默认变成调用链上写明的参数。
+   */
+  binary: string
   /** true 才真正写入；默认只校验。 */
   write?: boolean
   target?: string
   run: CommandRunner
   deps: ProbeDeps
 }
+
+/**
+ * `swd_flash.py` 的候选位置，**相对固件仓库根**，按优先级排列。
+ *
+ * 写成候选表而不是写死一条路径：原先写死的是 `upper_host_cli/swd_flash.py`，
+ * 而实际文件在 `demo_function_dispatch/tools/`。`upper_host_cli/README.md`
+ * 第一段就写着「板端的烧录和 SWD 在线诊断工具**不在这里**」——
+ * 那条默认路径从来没有存在过，于是 `rcs_fw_flash` 开箱即挡。
+ *
+ * 这类工具**依附于具体工程**（它要读该工程的构建产物与 .map），
+ * 所以位置会随工程走。候选表加上「找过哪里」的报错，比写死一条路径可靠。
+ */
+export const FLASH_SCRIPT_CANDIDATES = [
+  'demo_function_dispatch/tools/swd_flash.py',
+  'demo/tools/swd_flash.py',
+  'template/RCS_Template_F407/tools/swd_flash.py',
+  'upper_host_cli/swd_flash.py',
+]
+
+export type FlashScriptResolution =
+  | { ok: true; script: string; from: string }
+  | { ok: false; tried: string[] }
+
+/**
+ * 在固件仓库里找烧录脚本。找不到时**列出找过哪里**，不猜。
+ *
+ * @param firmwareRoot 固件仓库根目录
+ * @param exists 存在性判断（注入以便测试）
+ */
+export function resolveFlashScript(
+  firmwareRoot: string,
+  exists: (p: string) => boolean,
+): FlashScriptResolution {
+  const tried: string[] = []
+  for (const rel of FLASH_SCRIPT_CANDIDATES) {
+    const abs = join(firmwareRoot, rel)
+    tried.push(abs)
+    if (exists(abs)) return { ok: true, script: abs, from: rel }
+  }
+  return { ok: false, tried }
+}
+
+export function flashScriptNotFoundMessage(tried: string[]): string {
+  return (
+    '找不到烧录脚本 swd_flash.py。已按顺序找过：\n' +
+    tried.map((t) => `  · ${t}`).join('\n') +
+    '\n\n它依附于具体固件工程（要读该工程的构建产物与 .map），所以位置会随工程走。\n' +
+    '在插件配置里设 flashScript 指向实际路径即可。'
+  )
+}
+
 
 /**
  * 烧录固件。
@@ -697,20 +779,25 @@ export type FlashOptions = {
  * 烧录参数写错的代价是砖掉板子。
  */
 export async function flashFirmware(options: FlashOptions): Promise<FlashResult> {
-  const { script, run, deps } = options
+  const { script, binary, run, deps } = options
   const blocked = (reason: string): FlashResult => ({
-    ok: false, wrote: false, binary: options.binary ?? '(脚本默认)', output: '', blocked: reason,
+    ok: false, wrote: false, binary, output: '', blocked: reason,
   })
 
   if (!deps.exists(script)) return blocked(`找不到烧录脚本：${script}`)
   const python = deps.which('python') ?? deps.which('python3')
   if (!python) return blocked('没有 Python，无法运行 swd_flash.py。')
-  if (options.binary && !deps.exists(options.binary)) {
-    return blocked(`找不到固件文件：${options.binary}。先跑 rcs_fw_build 生成 .bin。`)
+  if (!binary) {
+    return blocked(
+      '没有指定要烧录的 .bin —— 本工具不使用脚本的隐式默认值，见 FlashOptions.binary 的说明。',
+    )
+  }
+  if (!deps.exists(binary)) {
+    return blocked(`找不到固件文件：${binary}。先跑 rcs_fw_build 生成 .bin。`)
   }
 
-  const args = [script]
-  if (options.binary) args.push('--bin', options.binary)
+  // `--bin` **无条件传**：不给脚本留「自己决定烧什么」的余地。
+  const args = [script, '--bin', binary]
   if (options.target) args.push('--target', options.target)
   if (options.write) args.push('--write')
 
@@ -720,7 +807,7 @@ export async function flashFirmware(options: FlashOptions): Promise<FlashResult>
   return {
     ok: r.code === 0,
     wrote: options.write === true && r.code === 0,
-    binary: options.binary ?? '(脚本默认)',
+    binary,
     output: `${r.stdout}\n${r.stderr}`.trim(),
   }
 }

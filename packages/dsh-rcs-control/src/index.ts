@@ -20,7 +20,8 @@
  *   - ContentBlock.type ∈ 'text'|'reasoning'|'image'|'tool-call'|'tool-result'
  *   - presentCall/presentResult 必须是**纯函数**：实时与回放都会调用
  */
-import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -38,6 +39,7 @@ import { decodeRdlc, parseHexBytes, toHex } from '../../rcs-core/src/rdlc.ts'
 import { checkAngleLoop, checkKinematics } from '../../rcs-core/src/kin-check.ts'
 import {
   probeToolchain, probeWslToolchain, buildFirmware, runSupportTests, flashFirmware,
+  projectOutputBinary, resolveFlashScript, flashScriptNotFoundMessage,
 } from '../../rcs-core/src/toolchain.ts'
 import type { BuildResult, TestOutcome, FlashResult, ToolStatus } from '../../rcs-core/src/toolchain.ts'
 import { nodeRunner, nodeDeps } from '../../rcs-core/src/runner.ts'
@@ -64,7 +66,7 @@ export interface Config {
   uv4: string
   /** `RCS_Support/test` 目录，PC 单元测试用。 */
   supportTestDir: string
-  /** `upper_host_cli/swd_flash.py` 路径。 */
+  /** `swd_flash.py` 路径。留空则在固件仓库里按候选表探测。 */
   flashScript: string
 }
 
@@ -361,8 +363,53 @@ export function apply(ctx: Context, config: Config): void {
     o || config.keilProject || join(root(), 'demo', 'MDK-ARM', 'RCS_Template_F407.uvprojx')
   const supportTestDir = (o?: string): string =>
     o || config.supportTestDir || join(root(), 'demo', 'RCS', 'RCS_Support', 'test')
-  const flashScript = (): string =>
-    config.flashScript || join(root(), 'upper_host_cli', 'swd_flash.py')
+  /**
+   * 烧录脚本：配置给了就用，否则在固件仓库里按候选表找。
+   *
+   * 原先写死 `upper_host_cli/swd_flash.py`，而那个文件从来不在那里
+   * （`upper_host_cli/README.md` 开头就说板端工具不在这个目录），
+   * 于是 `rcs_fw_flash` 开箱即挡。找不到时列出找过哪里。
+   */
+  const flashScript = (): string => {
+    if (config.flashScript) return config.flashScript
+    const r = resolveFlashScript(root(), (p) => nodeDeps.exists(p))
+    if (!r.ok) throw new Error(flashScriptNotFoundMessage(r.tried))
+    return r.script
+  }
+
+  /**
+   * 从**构建用的那个工程**推出 `.bin` 的绝对路径。
+   *
+   * 这一步是安全性质，不是便利：`swd_flash.py` 自己的默认产物路径是相对
+   * **脚本所在工程**解析的，而队内三个工程的产物同名
+   * （都是 `RCS_Template_F407/RCS_Template_F407.bin`）。不显式指定，
+   * 就可能出现「构建 demo、烧录 demo_function_dispatch 的旧产物」，
+   * 两边文件同名，看不出任何异常 —— 而这是要烧进板子的文件。
+   *
+   * 推不出来时明确报错，让人显式传 binary，绝不回落到脚本的隐式默认。
+   */
+  const derivedBinary = (projectOverride?: string): string => {
+    const project = keilProject(projectOverride)
+    let xml: string
+    try {
+      xml = readFileSync(project, 'utf8')
+    } catch {
+      throw new Error(
+        `读不到工程文件：${project}
+` +
+          '无法确定构建产物位置。请在调用 rcs_fw_flash 时显式传 binary。',
+      )
+    }
+    const rel = projectOutputBinary(xml)
+    if (!rel) {
+      throw new Error(
+        `从工程文件里读不出产物路径（缺 OutputDirectory 或 OutputName）：${project}
+` +
+          '请在调用 rcs_fw_flash 时显式传 binary。',
+      )
+    }
+    return join(dirname(project), rel)
+  }
 
   /**
    * 给呈现钩子用的安全版本。
@@ -391,6 +438,15 @@ export function apply(ctx: Context, config: Config): void {
       return supportTestDir(o)
     } catch {
       return '(未找到固件工程)'
+    }
+  }
+
+  /** 同理：烧录的确认卡片要显示产物路径，但推导会抛，presentCall 不能抛。 */
+  const binarySafe = (o?: string): string => {
+    try {
+      return derivedBinary(o)
+    } catch {
+      return '(无法推导产物路径，请显式传 binary)'
     }
   }
 
@@ -708,7 +764,14 @@ export function apply(ctx: Context, config: Config): void {
         '整个工具按 L2 物理动作管控：接调试器会 halt 住 MCU，若此时机器人上电且电机使能，' +
         '急停逻辑随之停止运行。执行前请确认周围无人、机构行程内无手、气路已泄压。',
       parameters: {
-        binary: { type: 'string', description: '.bin 路径，省略用脚本默认' },
+        binary: {
+          type: 'string',
+          description: '.bin 路径。省略则从 project 对应的 Keil 工程推导产物位置',
+        },
+        project: {
+          type: 'string',
+          description: '.uvprojx 路径，用于推导产物位置；省略用与 rcs_fw_build 相同的默认工程',
+        },
         write: { type: 'boolean', description: 'true 才真正写入；默认只校验' },
         target: { type: 'string', description: '芯片型号，默认 stm32f407vgtx' },
       },
@@ -726,12 +789,19 @@ export function apply(ctx: Context, config: Config): void {
         },
         render: (_args, value) => [{ type: 'text', text: renderFlash(value as FlashResult) }],
       },
+      // L2 的人工确认要让人看见**到底哪个文件会进板子**。
+      // 原先缺省显示「(脚本默认)」，那正是最该说清楚的时候却说不出来。
       presentCall: (args) =>
-        checkCallView(args.write ? '烧录固件（写入）' : '校验固件（只读）', args.binary ?? '(脚本默认)'),
+        checkCallView(
+          args.write ? '烧录固件（写入）' : '校验固件（只读）',
+          args.binary ?? binarySafe(args.project),
+        ),
       async execute(args) {
         return (await flashFirmware({
           script: flashScript(),
-          ...(args.binary ? { binary: args.binary } : {}),
+          // 缺省时从**构建用的那个工程**推导，绝不回落到脚本的隐式默认 ——
+          // 三个工程产物同名，隐式默认可能烧的是另一个工程的旧固件。
+          binary: args.binary || derivedBinary(args.project),
           ...(args.target ? { target: args.target } : {}),
           write: args.write === true,
           run: nodeRunner,

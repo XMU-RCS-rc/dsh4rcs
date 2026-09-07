@@ -11,6 +11,7 @@ import {
   probeToolchain, parseKeilLog, buildFirmware, UV4_EXIT, KEIL_CANDIDATES,
   archiveObjectFormat, parseGtestOutput, runSupportTests, flashFirmware, classifyBuildFailure,
   classifyTestFailure, toWslPath, projectCompilerVersion, keilBundledCompilers, probeWslToolchain,
+  projectOutputBinary, resolveFlashScript, flashScriptNotFoundMessage, FLASH_SCRIPT_CANDIDATES,
 } from '../src/toolchain.ts'
 import type { CommandResult, CommandRunner, ProbeDeps } from '../src/toolchain.ts'
 
@@ -470,25 +471,44 @@ describe('runSupportTests', () => {
 })
 
 describe('flashFirmware', () => {
-  const script = 'D:/code/RCS_code/upper_host_cli/swd_flash.py'
+  const script = 'D:/code/RCS_code/demo_function_dispatch/tools/swd_flash.py'
+  const binary = 'D:/code/RCS_code/demo/MDK-ARM/RCS_Template_F407/RCS_Template_F407.bin'
   const deps = depsWith(['swd_flash.py', '.bin'], ['python'])
+
+  /**
+   * 这是整个模块最要紧的一条不变量。
+   *
+   * `swd_flash.py` 自己的产物路径是**相对脚本所在工程**解析的，而队内三个工程
+   * （demo / demo_function_dispatch / template）的产物完全同名。一旦不显式传
+   * `--bin`，就可能构建了这个工程、却把另一个工程的旧固件烧进板子 ——
+   * 两边文件同名，任何输出都看不出异常。烧录是 L2 物理动作，不能留这种口子。
+   */
+  it('永远显式传 --bin —— 不给脚本留「自己决定烧什么」的余地', async () => {
+    const run = fakeRunner()
+    await flashFirmware({ script, binary, run, deps })
+    const args = run.calls[0]?.args ?? []
+    expect(args).toContain('--bin')
+    expect(args[args.indexOf('--bin') + 1]).toBe(binary)
+  })
 
   it('默认只校验，不传 --write', async () => {
     const run = fakeRunner()
-    const r = await flashFirmware({ script, run, deps })
+    const r = await flashFirmware({ script, binary, run, deps })
     expect(run.calls[0]?.args).not.toContain('--write')
     expect(r.wrote).toBe(false)
   })
 
   it('write 为 true 时才真正写入', async () => {
     const run = fakeRunner()
-    const r = await flashFirmware({ script, run, deps, write: true })
+    const r = await flashFirmware({ script, binary, run, deps, write: true })
     expect(run.calls[0]?.args).toContain('--write')
     expect(r.wrote).toBe(true)
   })
 
   it('写入失败时 wrote 为 false —— 不能因为传了 write 就报告写成功', async () => {
-    const r = await flashFirmware({ script, run: fakeRunner({ swd_flash: { code: 1 } }), deps, write: true })
+    const r = await flashFirmware({
+      script, binary, run: fakeRunner({ swd_flash: { code: 1 } }), deps, write: true,
+    })
     expect(r.ok).toBe(false)
     expect(r.wrote).toBe(false)
   })
@@ -503,8 +523,67 @@ describe('flashFirmware', () => {
     expect(run.calls).toEqual([])
   })
 
+  it('binary 为空串时挡下，不回落到脚本默认值', async () => {
+    const run = fakeRunner()
+    const r = await flashFirmware({ script, binary: '', run, deps })
+    expect(r.blocked).toContain('没有指定要烧录的 .bin')
+    expect(run.calls).toEqual([])
+  })
+
   it('没有 Python 时说清楚', async () => {
-    const r = await flashFirmware({ script, run: fakeRunner(), deps: depsWith(['swd_flash.py'], []) })
+    const r = await flashFirmware({
+      script, binary, run: fakeRunner(), deps: depsWith(['swd_flash.py'], []),
+    })
     expect(r.blocked).toContain('Python')
+  })
+})
+
+describe('projectOutputBinary —— 从 .uvprojx 推产物路径', () => {
+  /**
+   * 不能写死产物名：三个工程的 OutputName 恰好都是 RCS_Template_F407，
+   * 写死等于放弃了「烧的是哪个工程」这个区分。
+   */
+  it('解析 OutputDirectory 与 OutputName，反斜杠转正斜杠', () => {
+    const xml = '<OutputDirectory>RCS_Template_F407' + String.fromCharCode(92) +
+      '</OutputDirectory><OutputName>RCS_Template_F407</OutputName>'
+    expect(projectOutputBinary(xml)).toBe('RCS_Template_F407/RCS_Template_F407.bin')
+  })
+
+  it('输出目录为空时产物就在工程目录下', () => {
+    expect(
+      projectOutputBinary('<OutputDirectory></OutputDirectory><OutputName>fw</OutputName>'),
+    ).toBe('fw.bin')
+  })
+
+  it('缺字段返回 undefined —— 由调用方明确报错，不猜', () => {
+    expect(projectOutputBinary('<OutputDirectory>x</OutputDirectory>')).toBeUndefined()
+    expect(projectOutputBinary('')).toBeUndefined()
+  })
+})
+
+describe('resolveFlashScript —— 候选表探测', () => {
+  /**
+   * 原先写死 upper_host_cli/swd_flash.py，而那个文件从来不在那里
+   * （upper_host_cli/README.md 开头就写着板端工具不在这个目录），
+   * 于是 rcs_fw_flash 开箱即挡。
+   */
+  // join() 在 Windows 上产出反斜杠，断言要与分隔符无关，否则这条只在 Linux 绿。
+  const slash = (p: string): string => p.split(String.fromCharCode(92)).join('/')
+
+  it('命中真实位置 demo_function_dispatch/tools', () => {
+    const r = resolveFlashScript('/fw', (p) => slash(p).includes('demo_function_dispatch/tools'))
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.from).toBe('demo_function_dispatch/tools/swd_flash.py')
+  })
+
+  it('找不到时列出找过哪些路径，不猜一个', () => {
+    const r = resolveFlashScript('/fw', () => false)
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.tried.length).toBe(FLASH_SCRIPT_CANDIDATES.length)
+    const msg = flashScriptNotFoundMessage(r.tried)
+    expect(msg).toContain('已按顺序找过')
+    expect(msg).toContain('flashScript')
   })
 })

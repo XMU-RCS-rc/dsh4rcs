@@ -121,7 +121,12 @@ npm run check -- layer-lint     D:/code/RCS_code --json
 **退出码**：无 error 返回 0，否则 1 —— 可直接当门禁。
 
 工具链相关的检查也能在 dsh 之外跑（详见各工具说明）：构建走 Keil `UV4.exe`、
-PC 测试走 CMake+gtest、烧录走队内既有的 `upper_host_cli/swd_flash.py`。
+PC 测试走 CMake+gtest、烧录走队内既有的 `swd_flash.py`（在 `demo_function_dispatch/tools/`，
+按候选表探测，位置可用插件配置 `flashScript` 覆盖）。
+
+> 烧录**始终显式指定 `.bin`**，缺省时从构建用的那个 Keil 工程推导产物位置。
+> 不这么做的话，`swd_flash.py` 会按自己所在工程去找产物，而队内三个工程的产物同名 ——
+> 可能构建了这个工程、却把另一个工程的旧固件烧进板子，且看不出任何异常。
 **这三样都不是新造的轮子**，插件只负责调用与解析输出。
 
 飞书同步同样有命令行入口：
@@ -277,10 +282,10 @@ packages/
 | **M3 全部** | ✅ 已完成（协议解算 + 构建烧录） |
 | PC 单元测试 | ✅ 已跑通（WSL 模式 14/14）。需队里把 `test/CMakeLists.txt` 的 `CMAKE_CXX_STANDARD` 改成 17 |
 | Keil 编译器版本 | ⚠️ 工程选了没授权的 V6.24，Keil 自带的是 V6.22。切过去即可，**不是授权问题** |
-| **构建/烧录工具** | Keil `UV4.exe` 路径或 EIDE 命令行；烧录器型号与 `isp_flash.py` 参数 |
+| **构建/烧录工具** | ✅ 已接入：Keil `UV4.exe` 自动探测，烧录复用 `swd_flash.py`（pyOCD + SWD） |
 | **总线 ID 映射** | 每年底盘全新，做成 `config/` 里的映射表，等实车定了再填 |
 | **日志模块** | 一份真实日志样本 + 格式说明 |
 | **UI 面板 / 品牌色** | RCS 品牌色（深浅两套）；`rcs-ui/src/theme.ts` 现为中性占位，**未编造** |
-| **赛场清单** | `rcs_checklist` 的实际内容（检录/上场前自检/下场） |
+| **赛场清单** | 规划中的 `rcs_checklist` 尚未实现，等队里给实际内容（检录/上场前自检/下场） |
 
 > **提醒**：冲刺期里插件优先级低于主线。路线图里那个 CAN 缓冲区崩溃（git log `fa9056c`）如果还没修，比这里任何一条都重要。

@@ -69,10 +69,12 @@ export {
 export {
   probeToolchain, probeWslToolchain, parseKeilLog, buildFirmware, runSupportTests, flashFirmware,
   archiveObjectFormat, parseGtestOutput, UV4_EXIT, KEIL_CANDIDATES, classifyBuildFailure, classifyTestFailure, toWslPath, projectCompilerVersion, keilBundledCompilers,
+  projectOutputBinary, resolveFlashScript, flashScriptNotFoundMessage, FLASH_SCRIPT_CANDIDATES,
 } from './toolchain.ts'
 export type {
   CommandResult, CommandRunner, ProbeDeps, ToolStatus, BuildDiagnostic,
   BuildResult, BuildOptions, TestOutcome, SupportTestOptions, FlashResult, FlashOptions,
+  FlashScriptResolution,
 } from './toolchain.ts'
 
 export { nodeRunner, nodeDeps, whichSync } from './runner.ts'

@@ -296,7 +296,7 @@ data/rules/
 |---|---|---|
 | `rcs_fw_build` | L1 | 调 MDK-ARM 或 VSCode/EIDE 构建，**编译错误结构化返回**（文件:行:原因） |
 | `rcs_support_test` | L1 | 跑 `RCS_Support/test` 的 PC 单元测试（CMake），**不需要硬件**——CI 的核心 |
-| `rcs_fw_flash` | **L2** | **复用现成的 `upper_host_cli/swd_flash.py`**（pyocd，target `stm32f407vgtx`），勿重造 —— 强制人工确认 |
+| `rcs_fw_flash` | **L2** | **复用现成的 `swd_flash.py`**（pyocd，target `stm32f407vgtx`），勿重造 —— 强制人工确认。**v0.6 更正**：脚本实际在 `demo_function_dispatch/tools/`，不在 `upper_host_cli/`（后者的 README 开头即说明板端工具不在那里） |
 | `rcs_lint_embedded` | L0 | 嵌入式规范检查：中断内禁 `printf`/`malloc`、`volatile` 漏加、临界区、DMA 对齐、看门狗、**急停回路是否可被软件旁路** |
 | `rcs_pneumatic_check` | L0 | **气动回路检查**：气压是否超规则上限、气缸推力是否够、**电磁阀失电状态是否安全** |
 
