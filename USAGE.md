@@ -2,19 +2,19 @@
 
 > 更新：2026-08-27
 > 面向：RCS 队内使用者与后续维护者
-> 相关：[`README.md`](./README.md)（设计要点与验证阶梯） · [`dsh-rcs-plugin-design.md`](./dsh-rcs-plugin-design.md)（完整功能设计）
+> 相关：[`README.md`](./README.md)（安装与总览） · [`FEATURES.md`](./FEATURES.md)（功能清单与验证阶梯） · [`dsh-rcs-plugin-design.md`](./dsh-rcs-plugin-design.md)（完整功能设计）
 
 ---
 
 ## 一、这是什么
 
-给 RCS 战队做的 DeepSeek Harness（dsh）插件套件。**4 个插件、8 个工具**，让 Agent 能直接回答「规则怎么说」和「我们的工程哪里不对」。
+给 RCS 战队做的 DeepSeek Harness（dsh）插件套件。**7 个插件、24 个工具**，让 Agent 能直接回答「规则怎么说」和「我们的工程哪里不对」。
 
 **当前赛季：2027 · 第二十六届 ROBOCON 竞技赛 · 主题「女娲补天」**（规则 V0 已入库）。
 
 ---
 
-## 二、20 个工具
+## 二、24 个工具
 
 ### 规则相关（`dsh-rcs-rules`）
 
@@ -56,9 +56,9 @@
 | `rcs_toolchain_status` | L0 | 探测 Keil / CMake / Python / WSL，缺什么给安装命令 |
 | `rcs_support_test` | **L1** | PC 单元测试，不需要硬件 |
 | `rcs_fw_build` | **L1** | Keil UV4 构建，错误结构化返回 |
-| `rcs_fw_flash` | **L2** | SWD 烧录，**默认只校验**，赛场拒绝 |
+| `rcs_fw_flash` | **L2** | SWD 烧录，**默认只校验不写入** |
 
-> L1/L2 由 `rcs-guard` 统一管控：赛场模式下三者全部硬拒，开发模式下烧录需人工确认。
+> L1/L2 由 `rcs-guard` 统一管控：烧录需人工确认，构建与跑测试放行。
 
 ### 队内飞书资料（`dsh-rcs-kb`）
 
@@ -66,16 +66,21 @@
 |---|---|---|
 | `rcs_kb_search` | `query`(必填)、`limit` | **离线**检索队内资料镜像，返回片段 + 飞书原文链接 |
 | `rcs_kb_status` | — | 镜像状态：上次同步、文档数、授权范围、按类型跳过数 |
-| `rcs_kb_sync` | `force` | 同步飞书资料到本地镜像。**联网 + 写盘 → L1，赛场禁止** |
+| `rcs_kb_sync` | `force` | 同步飞书资料到本地镜像。**联网 + 写盘 → L1** |
 
-> 检索**不联网**，赛场断网照样能用。这是刻意的：同步与检索解耦，
+> 检索**不联网**，没网也照样能用。这是刻意的：同步与检索解耦，
 > 检索永远读 `data/kb-cache/`，绝不实时打飞书 API。
 >
 > 查不到东西时先跑 `rcs_kb_status` —— 要区分「镜像里没有」和「队里没有」。
 
 ### 安全层（`dsh-rcs-guard`，无工具，横切生效）
 
-三级危险度管控。**L2 物理动作**（烧录、电机使能、气路动作、总线下发）在开发模式需人工确认，**赛场模式一律拒绝**。
+四档危险度管控。**L2 物理动作**（烧录、电机使能、气路动作、总线下发）**需人工确认**；
+**LG 代码生成**在培训模式需过闸门。模式只有 `dev` 与 `training`，**没有一档是拒绝** ——
+曾经的 `field`（赛场只读）已删除，理由见 [README 的安全层一节](./README.md#安全层)。
+
+> guard 按工具名精确匹配，只认 `rcs_*`。宿主自带的 `bash` / `pwsh` / `write` 不经过它，
+> 所以这一层是给 rcs 工具加的提醒，**不是沙箱**。
 
 ---
 
@@ -98,8 +103,8 @@ npm run dsh:start      # 启动 rcs-dev profile（插件已装好）
 ### 改了代码之后
 
 ```bash
-npm run verify        # typecheck → 构建 → 441 个测试
-npm run dsh:install   # 重新构建并把 6 个插件装进 profile
+npm run verify        # typecheck → 构建 → 557 个测试
+npm run dsh:install   # 重新构建并把 7 个插件装进 profile
 npm run dsh:start
 ```
 
@@ -194,8 +199,12 @@ npm run dsh:config
 | 文件 | 内容 |
 |---|---|
 | `USAGE.md` | 本文 —— 总览与使用 |
-| `README.md` | 设计要点、验证阶梯、已知事项 |
-| `dsh-rcs-plugin-design.md` | 完整功能设计 v0.5（M0~M7 全景与实现状态） |
+| `README.md` | 安装、总览、安全层、文档导航 |
+| `FEATURES.md` | 功能清单、验证阶梯、版本新鲜度、还缺什么 |
+| `docs/install.md` | 目录布局、装进其它 profile、配置解析链 |
+| `docs/troubleshooting.md` | 排错 |
+| `CONTRIBUTING.md` | 参与开发 |
+| `dsh-rcs-plugin-design.md` | 完整功能设计 v0.6（M0~M7 全景与实现状态） |
 | `rcs-embedded-roadmap.md` | 电控方向技术路线（不涉及插件） |
 | `deepseek-harness-plugin-guide.md` | dsh 插件开发通用指南 |
 
