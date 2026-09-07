@@ -24,6 +24,7 @@ const PLUGINS = [
   'dsh-rcs-rules',
   'dsh-rcs-kb',
   'dsh-rcs-ui-client',
+  'dsh-rcs-train',
 ]
 
 if (process.argv.includes('--install-stage')) {

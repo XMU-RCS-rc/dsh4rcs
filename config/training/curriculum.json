@@ -1,0 +1,236 @@
+{
+  "$comment": [
+    "培训课程表。老队员加任务只改本文件，不动代码。",
+    "",
+    "任务形态：发一份**大致能用的基线**，学员把它扩展出更复杂的功能。",
+    "不是挖空填空 —— 对没写过嵌入式的新生，面对满屏 TODO 连从哪下手都不知道。",
+    "基线一烧进去就有现象，改坏了立刻知道，goals 明确列出还差什么。",
+    "",
+    "kind 区分两类验收：",
+    "  pc-test    纯算法，能在 WSL 里跑 gtest 自动判定，不需要板子",
+    "  on-target  外设，必须烧板子看现象，只能自动查规范，功能由老队员当面验收",
+    "两者的验收单形态完全不同，混在一起会让人以为外设任务也被自动验过了。",
+    "",
+    "refs 指向队内飞书资料，由 rcs_train_task 交给 rcs_kb_search 解析成具体位置。",
+    "每个任务至少要有一条 —— 没有的话等于让新生上网瞎搜，那正是本套工具要避免的。"
+  ],
+  "season": "2027",
+  "tasks": [
+    {
+      "id": "ring-buffer",
+      "title": "环形缓冲区：从单字节收发扩展到批量读写",
+      "stage": "algorithm",
+      "kind": "pc-test",
+      "requires": [],
+      "refs": [
+        "RCSLIB代码规范#编码细节",
+        "软件知识体系、百事通#实操课任务"
+      ],
+      "baseline": "template/RCS_Template_F103/RCS/RCS_Support/src/ring_buffer.c",
+      "strip": [
+        "ring_buffer_count",
+        "ring_buffer_space",
+        "ring_buffer_write",
+        "ring_buffer_read",
+        "ring_buffer_peek"
+      ],
+      "testFile": "template/RCS_Template_F103/RCS/RCS_Support/test/ring_buffer_test.cpp",
+      "$baselineComment": [
+        "基线只实现 init / put / get / reset / is_empty / is_full，第一次跑 9 条里 3 绿 6 红。",
+        "红的比挖空的函数多，是因为 is_empty/is_full 依赖 count —— 这个级联是刻意保留的教学点，",
+        "测试文件头部已写明调用链，引导学员顺着依赖往下查而不是盯着报错行。"
+      ],
+      "goals": [
+        "先补 count 与 space —— 它们是地基，补完后 PutThenGet / WrapAround 会自动变绿（想清楚为什么）",
+        "补出 write / read 批量接口，缓冲区满时要截断并如实返回实际字节数",
+        "补出 peek —— 看一眼但不取走",
+        "让 9 条测试全绿，其中 WrapAroundKeepsOrder 会跑 100 轮绕回压测"
+      ],
+      "accept": {
+        "tests": [
+          "RB.*"
+        ],
+        "lint": [
+          "embedded"
+        ],
+        "observe": []
+      },
+      "include": [
+        "template/RCS_Template_F103/RCS/RCS_Support/inc/ring_buffer.h",
+        "template/RCS_Template_F103/RCS/RCS_HAL/inc/rcs_types.h"
+      ]
+    },
+    {
+      "id": "gpio-key",
+      "title": "GPIO 与中断：从轮询读按键改成 EXTI 中断",
+      "stage": "peripheral",
+      "kind": "on-target",
+      "requires": [],
+      "refs": [
+        "硬件/软件培训知识体系/软件/单片机组成原理与开发逻辑教案",
+        "软件知识体系、百事通#基本常识培训"
+      ],
+      "baseline": "template/RCS_Template_F103/RCS/RCS_Template/gpio_test.c",
+      "strip": [
+        "poll_key",
+        "on_key_exti"
+      ],
+      "testFile": "",
+      "goals": [
+        "先用轮询把按键读出来，快速连按，观察 LED 偶尔不听话",
+        "换成带消抖的读法，对比现象，说清楚机械按键抖动是怎么回事",
+        "改成 EXTI 中断：回调里只置标志位，主循环处理",
+        "试着在中断回调里加一句 rcs_kprintf，看看会发生什么，然后删掉"
+      ],
+      "accept": {
+        "tests": [],
+        "lint": [
+          "embedded"
+        ],
+        "observe": [
+          "板载 LED 每秒闪一次（心跳灯还活着）",
+          "按键按下时 LED1 翻转，连按不误触发",
+          "能说出轮询与中断在 CPU 占用和响应速度上的区别"
+        ]
+      },
+      "include": [
+        "template/RCS_Template_F103/RCS/RCS_HAL/inc/rcs_gpio.h",
+        "template/RCS_Template_F103/RCS/RCS_HAL/inc/rcs_exti.h"
+      ],
+      "$baselineComment": [
+        "基线里 poll_key、on_key_exti 被挖空，其余功能能跑。",
+        "学员补完这几个函数，对照 accept.observe 上板验证现象。"
+      ]
+    },
+    {
+      "id": "uart-echo",
+      "title": "串口：从单向打印扩展到收发回显",
+      "stage": "peripheral",
+      "kind": "on-target",
+      "requires": [
+        "gpio-key"
+      ],
+      "refs": [
+        "硬件/软件培训知识体系/软件/软件知识体系、百事通",
+        "参考资料/技术总结/如何编写高质量的代码"
+      ],
+      "baseline": "template/RCS_Template_F103/RCS/RCS_Template/uart_test.c",
+      "strip": [
+        "echo_back"
+      ],
+      "testFile": "",
+      "goals": [
+        "基线只会每秒打印一行，先让它跑通，确认接线和波特率都对",
+        "加上回显：读到什么原样发回去",
+        "在主循环里插一句 HAL_Delay(500) 模拟主循环很忙，粘贴一大段文字，观察丢不丢",
+        "把 BOARD_UART_RX_BUF_SIZE 从 256 改成 16，重复上一步，对比现象"
+      ],
+      "accept": {
+        "tests": [],
+        "lint": [
+          "embedded"
+        ],
+        "observe": [
+          "串口助手每秒收到一行，无乱码",
+          "打字有回显，内容一致",
+          "能说清楚缓冲区大小与丢数据的关系",
+          "能算出 115200 波特率下发一个字节要多久"
+        ]
+      },
+      "include": [
+        "template/RCS_Template_F103/RCS/RCS_HAL/inc/rcs_uart.h"
+      ],
+      "$baselineComment": [
+        "基线里 echo_back 被挖空，其余功能能跑。",
+        "学员补完这几个函数，对照 accept.observe 上板验证现象。"
+      ]
+    },
+    {
+      "id": "pwm-servo",
+      "title": "PWM：从呼吸灯扩展到舵机角度控制",
+      "stage": "peripheral",
+      "kind": "on-target",
+      "requires": [
+        "uart-echo"
+      ],
+      "refs": [
+        "参考资料/技术总结/执行器--电机",
+        "硬件/软件培训知识体系/软件/软件知识体系、百事通"
+      ],
+      "baseline": "template/RCS_Template_F103/RCS/RCS_Template/pwm_test.c",
+      "strip": [
+        "sweep_servo"
+      ],
+      "testFile": "",
+      "goals": [
+        "先用 20kHz 让 LED 呼吸，再把频率降到 50Hz，观察什么时候肉眼开始看得出闪烁",
+        "不看注释，自己用公式算出 PSC=71、ARR=19999 时的频率，然后验证",
+        "改成舵机档，让舵机在 0/90/180 度之间切换",
+        "舵机抖动或转不到位时，自己调 BOARD_SERVO_MIN_US / MAX_US"
+      ],
+      "accept": {
+        "tests": [],
+        "lint": [
+          "embedded"
+        ],
+        "observe": [
+          "呼吸灯平滑无可见闪烁",
+          "舵机能准确停在三个角度",
+          "能正确算出 PWM 频率，并说出 APB1 定时器时钟为什么是 72MHz 而不是 36MHz",
+          "舵机使用独立电源并与板子共地"
+        ]
+      },
+      "include": [
+        "template/RCS_Template_F103/RCS/RCS_HAL/inc/rcs_tim.h"
+      ],
+      "$baselineComment": [
+        "基线里 sweep_servo 被挖空，其余功能能跑。",
+        "学员补完这几个函数，对照 accept.observe 上板验证现象。"
+      ]
+    },
+    {
+      "id": "can-loopback",
+      "title": "CAN：从回环收发扩展到理解发送邮箱与缓冲区",
+      "stage": "peripheral",
+      "kind": "on-target",
+      "requires": [
+        "uart-echo"
+      ],
+      "refs": [
+        "硬件/软件培训知识体系/软件/CAN总线入门",
+        "参考资料/常用模块的使用说明/历年的RC硬件积累"
+      ],
+      "baseline": "template/RCS_Template_F103/RCS/RCS_Template/can_test.c",
+      "strip": [
+        "flood_mailbox"
+      ],
+      "testFile": "",
+      "goals": [
+        "回环模式下发一条收一条，先把流程跑通（不需要任何外部硬件）",
+        "改成一次连发 3 条、6 条，观察结果",
+        "绕过 rcs_can 封装，直接连调 6 次 HAL_CAN_AddTxMessage，观察丢帧",
+        "翻 F103 参考手册找到发送邮箱的数量，解释上一步为什么丢",
+        "读 rcs_can.c 的 tx_kick，说明环形缓冲区是怎么补上这个坑的"
+      ],
+      "accept": {
+        "tests": [],
+        "lint": [
+          "embedded"
+        ],
+        "observe": [
+          "回环模式下发几条收几条，计数对得上",
+          "能复现直接调 HAL 连发 6 条时的丢帧现象",
+          "能说出 STM32 CAN 有几个发送邮箱，以及为什么需要发送缓冲区",
+          "能说出 CAN 与 UART 在拓扑、数据单位、主从关系上的区别"
+        ]
+      },
+      "include": [
+        "template/RCS_Template_F103/RCS/RCS_HAL/inc/rcs_can.h"
+      ],
+      "$baselineComment": [
+        "基线里 flood_mailbox 被挖空，其余功能能跑。",
+        "学员补完这几个函数，对照 accept.observe 上板验证现象。"
+      ]
+    }
+  ]
+}

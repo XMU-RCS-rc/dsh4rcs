@@ -43,18 +43,38 @@ import { fileURLToPath } from 'node:url'
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const SCOPE = join(REPO, 'node_modules', '@deepseek-ai')
 
+/** `~/.dsh/profiles` 的位置。 */
+const PROFILES_DIR = join(
+  process.env['USERPROFILE'] ?? process.env['HOME'] ?? '',
+  '.dsh',
+  'profiles',
+)
+
+/**
+ * 列出**所有**已存在的 profile。
+ *
+ * 早先这里写死了 `rcs-dev`，于是新建一个 profile 做验证时它拿不到联接，
+ * 静默带着双实例风险跑起来 —— 而那个风险的后果是 code mode 崩溃并
+ * **永久毁掉会话历史**。写死一个名字省不了几行，代价却是这种级别的故障，
+ * 所以改成扫描：有几个 profile 就检查几个，谁也不会被漏掉。
+ */
+function discoverProfileScopes() {
+  if (!existsSync(PROFILES_DIR)) return []
+  return readdirSync(PROFILES_DIR, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => [`profile:${e.name}`, join(PROFILES_DIR, e.name, 'node_modules', '@deepseek-ai')])
+    .filter(([, scope]) => existsSync(scope))
+}
+
 /**
  * 需要与宿主统一的**全部**位置。
  *
- * profile 那份最要紧：dsh 的 loader 从 profile 根解析插件名，所以
+ * profile 那几份最要紧：dsh 的 loader 从 profile 根解析插件名，所以
  * `ctx.tools`（ToolRuntime 实例）来自 profile 的 dsh-tools；而 dsh-agent-loop
  * 来自 npx 缓存，它用自己那份的符号去读 `ctx.tools[TOOL_RUNTIME_SCHEDULER]`。
  * 两份不统一 → 取回 undefined → 无论标准模式还是 code 模式都崩。
  */
-const SCOPES = [
-  ['仓库', SCOPE],
-  ['profile', join(process.env['USERPROFILE'] ?? process.env['HOME'] ?? '', '.dsh', 'profiles', 'rcs-dev', 'node_modules', '@deepseek-ai')],
-]
+const SCOPES = [['仓库', SCOPE], ...discoverProfileScopes()]
 
 /** 只统一**宿主必须唯一**的这几个。其余包各自一份没有影响。 */
 const HOST_PACKAGES = ['dsh-tools', 'cordis', 'schemastery']

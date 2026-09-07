@@ -48,7 +48,17 @@ else {
 
 // ---------- 3. 构建产物 ----------
 console.log('\n[3/7] 构建产物')
-const plugins = ['dsh-rcs-core', 'dsh-rcs-guard', 'dsh-rcs-control', 'dsh-rcs-rules', 'dsh-rcs-kb']
+// 与 build.mjs 的 PLUGINS 保持一致。漏一个就会在 7 插件的仓库上报「5/5 已构建」——
+// 那是一个没验过的勾，正是本仓库「假绿比红更危险」那条要防的。
+const plugins = [
+  'dsh-rcs-core',
+  'dsh-rcs-guard',
+  'dsh-rcs-control',
+  'dsh-rcs-rules',
+  'dsh-rcs-kb',
+  'dsh-rcs-ui-client',
+  'dsh-rcs-train',
+]
 const built = plugins.filter((p) => existsSync(join(REPO, 'packages', p, 'lib', 'index.js')))
 if (built.length === plugins.length) console.log(ok(`${built.length}/${plugins.length} 个插件已构建`))
 else {

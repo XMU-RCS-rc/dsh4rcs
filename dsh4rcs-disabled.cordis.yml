@@ -12,3 +12,5 @@
   disabled: true
 - id: rcs-ui-client
   disabled: true
+- id: rcs-train
+  disabled: true

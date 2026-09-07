@@ -1,0 +1,15 @@
+# 培训插件。路径一律留空 —— 由 rcs-core/paths.ts 的解析链决定，
+# 这样别人 clone 下来不用改任何配置。
+#
+# workspaceRoot 留空表示用 ~/rcs-training/ —— 跨平台、不依赖盘符、
+# 不和固件仓库混在一起，学员改坏了不会波及队内代码。
+#
+# 注意：本插件只发任务和出验收单，**不判定"学会了"**。
+# 是否掌握由老队员提问后决定，工具只把机械部分自动化。
+- insert:
+    - id: rcs-train
+      name: dsh-rcs-train
+      config:
+        curriculum: ''
+        workspaceRoot: ''
+        student: ''
