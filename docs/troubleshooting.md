@@ -6,9 +6,18 @@
 
 dsh 的 profile 用 pnpm 安装，而 `dsh-web-app@0.1.0-rc.6` 用 `^0.1.0-rc.6` 声明客户端依赖 —— pnpm 会解析到更新的 rc.8，造成**服务端 rc.6、前端 rc.8**。rc.8 的前端在 `mountApp` 里 `await ctx.inject(['uiRenderer'])`，而 rc.6 这一代没有模块提供该服务；cordis 的 inject 是**无限等待且不报错**，结果是网页端永远停在 "Loading plugins…"，控制台里连报错都没有。
 
-修法：在 `~/.dsh/profiles/rcs-dev/pnpm-workspace.yaml` 里把全部 `@deepseek-ai/*` 钉到 `0.1.0-rc.6`，然后 `pnpm install`。
+**`npm run dsh:install` 已经自动处理**：它在建好 profile 之后、装插件之前，
+把本仓库 `package.json` 的 `overrides`（195 条，整棵 rc.6 树）写进
+`~/.dsh/profiles/rcs-dev/pnpm-workspace.yaml`，再让 pnpm 在这份钉死之下解析。
+这一步以前只存在于维护者本机手改的那份 profile 里，仓库里没有 ——
+照着 README 走完的新人必然撞上这个卡死，而且界面上没有任何线索。
+
+已经撞上了就重跑一次 `npm run dsh:install`。
 
 > **pnpm 11 起 overrides 只认 `pnpm-workspace.yaml`**，写在 `package.json` 的 `pnpm.overrides` 会被静默忽略（只有一行 WARN）。
+> 生成段带 `# >>> dsh4rcs overrides (generated) >>>` 标记，重跑是整段替换，手写内容不会被吃掉；
+> 若文件里已有另一段手写的 `overrides:`，脚本会停下来让你自己合并 —— YAML 重复顶层键只有一个生效，
+> 而且不报错。
 
 ### `link-host-packages.mjs` 报「版本不一致：仓库 0.1.0-rc.6 vs 宿主 0.1.0-rc.8」
 

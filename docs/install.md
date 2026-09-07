@@ -71,6 +71,29 @@ token 接口为整个页面提供 RCS 蓝白主题，覆盖背景、侧栏、卡
 
 ---
 
+### `npm run dsh:install` 都做了什么
+
+它走 `scripts/install-plugins.mjs`，三步：
+
+1. **构建**插件产物（失败就停住 —— 装一份旧产物只会让人对着过期代码调试）
+2. **写 profile 配置**：把本仓库 `package.json` 的 195 条 `overrides` 和
+   `allowBuilds: koffi` 写进 `~/.dsh/profiles/rcs-dev/pnpm-workspace.yaml`
+3. **装 7 个插件 + 2 个宿主 bundle**（`dsh-web-app`、`dsh-client-ui-primitives`）
+
+第 2 步必须在 pnpm 第一次跑之前：pnpm 默认忽略依赖的构建脚本并以
+`ERR_PNPM_IGNORED_BUILDS` **失败退出**，而 koffi 从第一次解析就在依赖里。
+
+第 2、3 步以前都不在仓库里，只存在于维护者本机手改过的那份 profile ——
+新人照着文档走完，得到的是一个装不完、或者装完了没有网页界面的 profile，
+而且两种失败都不会说自己缺什么。现在这三步都在脚本里，可重复。
+
+profile 的 `pnpm-workspace.yaml` 里生成段带 `# >>> dsh4rcs overrides (generated) >>>`
+标记，重跑是整段替换；标记之外的手写内容不动。若文件里另有一段手写的
+`overrides:` 或 `allowBuilds:`，脚本会停下来让你自己合并 ——
+YAML 重复顶层键只有一个生效，且不报错。
+
+装到别的 profile：`DSH4RCS_PROFILE=名字 node scripts/install-plugins.mjs`。
+
 ### tgz 安装到其它 profile
 
 `npm run dsh:install` 使用 link 布局，插件能从真实模块位置识别本仓库。若把

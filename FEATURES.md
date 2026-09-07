@@ -1,6 +1,6 @@
 # dsh4rcs 功能清单
 
-> 更新：2026-09-07 · 7 个插件 · 24 个工具 · 554 个测试全通过
+> 更新：2026-09-08 · 7 个插件 · 24 个工具 · 581 个测试全通过
 > 使用方法见 [`USAGE.md`](./USAGE.md) · 设计背景见 [`dsh-rcs-plugin-design.md`](./dsh-rcs-plugin-design.md)
 
 ---
@@ -114,7 +114,7 @@ packages/
 | 级别 | 做什么 | 需要 dsh | 状态 |
 |---|---|---|---|
 | L0 typecheck | 对着 `dsh-tools@0.1.0-rc.6` 的 `.d.ts` 检查 | ❌ | ✅ 零错误 |
-| L1 单元测试 | `vitest run` | ❌ | ✅ 554/554 |
+| L1 单元测试 | `vitest run` | ❌ | ✅ 581/581 |
 | L2 CLI 冒烟 | `npm run check -- all <工程>` | ❌ | ✅ |
 | L2.5 插件加载 | 桩 ctx / 真实 cordis 跑 `apply` | ❌ | ✅ |
 | L3 dsh 加载 | `npm run dsh:patch` | ✅ | ✅ |
@@ -123,7 +123,7 @@ packages/
 **每一层都抓到了下一层抓不到的东西。** 测试用的是真实工程与真实规则数据，不是 mock。
 本地怎么跑见 [`CONTRIBUTING.md`](./CONTRIBUTING.md)。
 
-### 测试分布（554 个）
+### 测试分布（581 个）
 
 | 文件 | 数量 | 重点 |
 |---|---|---|
