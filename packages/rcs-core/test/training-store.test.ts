@@ -6,7 +6,7 @@ import { join } from 'node:path'
 
 import {
   completedTaskIds,
-  defaultWorkspaceRoot,
+  resolveWorkspaceRoot,
   emptyProgress,
   parseProgress,
   renderReview,
@@ -47,8 +47,54 @@ const onTarget: TrainingTask = {
 }
 
 describe('工作目录', () => {
-  it('默认在用户主目录下，不依赖盘符', () => {
-    expect(defaultWorkspaceRoot('/home/xy')).toBe(join('/home/xy', 'rcs-training'))
+  // 分隔符无关：Windows 上 join 产出反斜杠，写死正斜杠会让这几条只在 Linux 绿。
+  const slash = (p: string): string => p.split(String.fromCharCode(92)).join('/')
+
+  it('插件配置优先于一切', () => {
+    const r = resolveWorkspaceRoot({
+      explicit: '/opt/ws',
+      env: { RCS_TRAINING_HOME: '/env/ws' },
+      repoRoot: '/code/dsh4rcs',
+      home: '/home/xy',
+    })
+    expect(r.root).toBe('/opt/ws')
+    expect(r.from).toBe('插件配置')
+  })
+
+  it('环境变量优先于仓库位置 —— 显式意图压过推断', () => {
+    const r = resolveWorkspaceRoot({
+      env: { RCS_TRAINING_HOME: '/env/ws' },
+      repoRoot: '/code/dsh4rcs',
+      home: '/home/xy',
+    })
+    expect(r.root).toBe('/env/ws')
+    expect(r.from).toContain('RCS_TRAINING_HOME')
+  })
+
+  /**
+   * 默认落在仓库旁边而不是主目录：Windows 上主目录必然在 C 盘，
+   * 而队里的工作盘是 D。三十多个新生的工作目录不该堆到系统盘。
+   */
+  it('默认与 dsh4rcs 仓库同级，不进主目录', () => {
+    const r = resolveWorkspaceRoot({ repoRoot: '/code/dsh4rcs', home: '/home/xy' })
+    expect(slash(r.root)).toBe('/code/rcs-training')
+    expect(slash(r.root)).not.toContain('/home/xy')
+    expect(r.from).toContain('同级')
+  })
+
+  it('推不出仓库位置时才退回主目录，且说明是兜底', () => {
+    const r = resolveWorkspaceRoot({ home: '/home/xy' })
+    expect(slash(r.root)).toBe('/home/xy/rcs-training')
+    expect(r.from).toContain('兜底')
+  })
+
+  it('空串与空白配置视为没配，继续往下找', () => {
+    const r = resolveWorkspaceRoot({
+      explicit: '   ',
+      env: { RCS_TRAINING_HOME: '' },
+      repoRoot: '/code/dsh4rcs',
+    })
+    expect(slash(r.root)).toBe('/code/rcs-training')
   })
 
   it('每个任务一个子目录', () => {

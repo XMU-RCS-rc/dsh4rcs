@@ -31,10 +31,10 @@ import type { Curriculum, TrainingTask } from '../../rcs-core/src/training.ts'
 import { scaffoldBanner, trimBaseline, workspaceCMake } from '../../rcs-core/src/scaffold.ts'
 import {
   completedTaskIds,
-  defaultWorkspaceRoot,
   emptyProgress,
   parseProgress,
   renderReview,
+  resolveWorkspaceRoot,
   taskProgressOf,
   taskWorkspace,
   withTaskProgress,
@@ -44,6 +44,7 @@ import {
   firmwareNotFoundMessage,
   repoPaths,
   resolveFirmwareRoot,
+  resolveRepoRoot,
 } from '../../rcs-core/src/paths.ts'
 
 export const name = 'rcs-train'
@@ -52,7 +53,7 @@ export const inject = ['tools']
 export interface Config {
   /** 课程表路径。留空用 `config/training/curriculum.json`。 */
   curriculum: string
-  /** 学员工作目录根。留空用 `~/rcs-training/`。 */
+  /** 学员工作目录根。留空则按解析链找，默认与 dsh4rcs 仓库同级。 */
   workspaceRoot: string
   /** 学员标识，进验收单。不是账号系统，本机自填即可。 */
   student: string
@@ -85,8 +86,21 @@ export function apply(ctx: Context, config: Config): void {
       ? config.curriculum
       : join(repoPaths.config(), 'training', 'curriculum.json')
 
-  const workspaceRoot = (): string =>
-    config.workspaceRoot !== '' ? config.workspaceRoot : defaultWorkspaceRoot(homedir())
+  /**
+   * 工作目录根。仓库位置在**这里**解析后传进去 —— training-store 是纯逻辑，
+   * 而且它会被打进插件产物，在那边推 import.meta.url 会得到错的答案。
+   */
+  const workspace = (): { root: string; from: string } => {
+    const repo = resolveRepoRoot()
+    return resolveWorkspaceRoot({
+      explicit: config.workspaceRoot,
+      env: process.env,
+      ...(repo.ok ? { repoRoot: repo.root } : {}),
+      home: homedir(),
+    })
+  }
+
+  const workspaceRoot = (): string => workspace().root
 
   /**
    * 进度文件放在**学员工作目录**里，不放共享仓库。
@@ -438,7 +452,11 @@ export function apply(ctx: Context, config: Config): void {
     }),
   )
 
+  // 横幅带上「这个路径是怎么来的」：默认值变过一次，
+  // 而学员看到的第一手信息就是这一行。说不清来源，出问题时没人查得动。
+  const ws = workspace()
   console.info(
-    `[rcs-train] 培训插件已加载：课程表 ${curriculumPath()}，工作目录 ${workspaceRoot()}`,
+    `[rcs-train] 培训插件已加载：课程表 ${curriculumPath()}，` +
+      `工作目录 ${ws.root}（来源：${ws.from}）`,
   )
 }

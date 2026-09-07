@@ -3,10 +3,20 @@
  *
  * ## 存哪
  *
- * 学员工作目录：`~/rcs-training/<任务id>/`
- *   跨平台、不依赖盘符、不和固件仓库混在一起 —— 学员改坏了不会波及队内代码。
+ * 学员工作目录默认是**与 dsh4rcs 仓库同级**的 `rcs-training/<任务id>/`，
+ * 即推荐布局里的第三个兄弟目录：
  *
- * 进度记录：`<学员工作目录>/progress.json`（即 `~/rcs-training/progress.json`）
+ *     code/
+ *     ├── dsh4rcs/       本仓库
+ *     ├── RCS_code/      固件仓库
+ *     └── rcs-training/  学员工作目录
+ *
+ * 早先默认放 `~/rcs-training`，理由是「跨平台、不依赖盘符」。**已改**：
+ * Windows 上主目录必然在 C 盘，而队里的工作盘是 D，把三十多个新生的
+ * 工作目录都堆到系统盘不合适。跟着仓库走既落在同一个盘，也仍然
+ * 不和两个 git 仓库混在一起 —— 学员改坏了不会波及队内代码。
+ *
+ * 进度记录：`<学员工作目录>/progress.json`
  *   本地文件，不上传、不联网。它记的是"谁做到哪、跑过几次验收"，
  *   属于验收材料而非成绩单 —— 培训的原则是「重在培训，不在筛选」。
  *   刻意不放共享仓库：它是学员本机的个人数据，而且放仓库会让测试写脏 data/。
@@ -17,20 +27,66 @@
  * 记录的意义是让验收单**如实呈现**：老队员看到"这段是生成的"，
  * 就知道该往哪个方向提问。没有这条，前面的闸门都只是形式。
  */
-import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import type { TrainingTask } from './training.ts'
 
 /* ---------- 工作目录 ---------- */
 
-/** 学员工作目录的根。可被工具参数或配置覆盖。 */
-export function defaultWorkspaceRoot(home = homedir()): string {
-  return join(home, 'rcs-training')
+/** 工作目录根的解析结果。`from` 会进启动横幅，让人知道这个路径是怎么来的。 */
+export type WorkspaceResolution = { root: string; from: string }
+
+/** 目录名固定，只有父目录随解析链变。 */
+const WORKSPACE_DIR = 'rcs-training'
+
+/**
+ * 解析学员工作目录的根。
+ *
+ * 与 `paths.ts` 同一套路数：**逐级解析、每一级都说得出来源**。
+ *
+ *   1. 插件配置（profile patch 里显式设的）
+ *   2. 环境变量 `RCS_TRAINING_HOME` —— 显式意图优先于推断，
+ *      也是「我这台机器 D 盘满了」的逃生口
+ *   3. 与 dsh4rcs 仓库同级的 `../rcs-training`（默认）
+ *   4. 主目录兜底 —— 只在推不出仓库位置时（如 tgz 装到 profile）
+ *
+ * **本函数刻意是纯函数，`repoRoot` 由调用方传入。**
+ * 不在这里自己调 `resolveRepoRoot()`：本文件会被打进
+ * `dsh-rcs-train/lib/index.js`，那时 `import.meta.url` 指向的是产物位置，
+ * tgz 布局下推出来的是 profile 根、校验不过，于是静默退回主目录 ——
+ * 恰好是这次要改掉的行为，而且只在新生的机器上发生。
+ */
+export function resolveWorkspaceRoot(
+  options: {
+    explicit?: string
+    env?: Record<string, string | undefined>
+    /** dsh4rcs 仓库根。由调用方解析后传入；推不出来就不传。 */
+    repoRoot?: string
+    home?: string
+  } = {},
+): WorkspaceResolution {
+  const explicit = options.explicit?.trim()
+  if (explicit) return { root: explicit, from: '插件配置' }
+
+  const fromEnv = options.env?.['RCS_TRAINING_HOME']?.trim()
+  if (fromEnv) return { root: fromEnv, from: '环境变量 RCS_TRAINING_HOME' }
+
+  if (options.repoRoot) {
+    return {
+      root: join(dirname(options.repoRoot), WORKSPACE_DIR),
+      from: '与 dsh4rcs 仓库同级',
+    }
+  }
+
+  if (options.home) {
+    return { root: join(options.home, WORKSPACE_DIR), from: '主目录兜底（推不出仓库位置）' }
+  }
+
+  return { root: WORKSPACE_DIR, from: '当前目录兜底（既无仓库位置也无主目录）' }
 }
 
-/** 某个任务的工作目录。 */
-export function taskWorkspace(taskId: string, root = defaultWorkspaceRoot()): string {
+/** 某个任务的工作目录。root 必须显式给 —— 默认值会把解析链绕过去。 */
+export function taskWorkspace(taskId: string, root: string): string {
   return join(root, taskId)
 }
 

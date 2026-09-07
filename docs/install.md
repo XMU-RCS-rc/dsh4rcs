@@ -11,8 +11,20 @@ README 里是最短路径，够日常使用。这里放两类内容：**装到�
 ```
 code/
 ├── dsh4rcs/       ← 本仓库
-└── RCS_code/      ← 固件仓库
+├── RCS_code/      ← 固件仓库
+└── rcs-training/  ← 学员工作目录（首次发放基线时自动建）
 ```
+
+`rcs-training/` 由 `rcs_train_scaffold` 按需创建，不用手工建，也不进任何 git 仓库。
+它默认跟着本仓库走而**不放主目录** —— Windows 上主目录必然在 C 盘，
+而队里的工作盘是 D，三十多个新生的工作目录不该堆到系统盘。
+要放别处就设环境变量：
+
+```powershell
+[Environment]::SetEnvironmentVariable('RCS_TRAINING_HOME','E:/rcs-training','User')
+```
+
+启动时横幅会打印实际用的目录和它的来源，对不上先看那一行。
 
 放在别处就设环境变量：
 
