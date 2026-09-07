@@ -25,17 +25,25 @@ const write = process.argv.includes('--write')
 const ok = (s) => `  ✅ ${s}`
 const bad = (s) => `  ❌ ${s}`
 const warn = (s) => `  ⚠️  ${s}`
-let blocking = 0
+// 只记数字的话，结尾那句"见上面标 ❌ 的条目"就可能指向一条**没被计数**的 ❌
+// （固件仓库那条就是），人会去修一个不阻塞的问题，真正卡住的反而找不到。
+// 存原因，结尾直接把它们念出来。
+const blockers = []
+const block = (reason) => blockers.push(reason)
 
 console.log('dsh4rcs 安装自检\n')
 
 // ---------- 1. Node ----------
 console.log('[1/7] Node 运行时')
-const major = Number(process.versions.node.split('.')[0])
-if (major >= 22) console.log(ok(`Node ${process.versions.node}`))
+// 门槛是 22.18 而不是 22：原生 TypeScript 剥离从 22.18 起才默认开启。
+// 早先只查主版本号，于是 22.5 的机器在这里拿到 ✅，接着在任何 import .ts 的
+// 脚本上崩一句 ERR_UNKNOWN_FILE_EXTENSION —— 一个自检打了勾之后才出现的失败，
+// 比不检查更难排。
+const [major, minor] = process.versions.node.split('.').map(Number)
+if (major > 22 || (major === 22 && minor >= 18)) console.log(ok(`Node ${process.versions.node}`))
 else {
-  console.log(bad(`Node ${process.versions.node} —— 需要 22 或更高（用到了原生 TS 剥离与新 fs API）`))
-  blocking++
+  console.log(bad(`Node ${process.versions.node} —— 需要 22.18 或更高（用到了原生 TS 剥离与新 fs API）`))
+  block(`Node 版本太低（${process.versions.node} < 22.18）`)
 }
 
 // ---------- 2. 依赖 ----------
@@ -43,7 +51,7 @@ console.log('\n[2/7] 依赖')
 if (existsSync(join(REPO, 'node_modules'))) console.log(ok('node_modules 已安装'))
 else {
   console.log(bad('还没装依赖 —— 先跑 `npm install`'))
-  blocking++
+  block('没装依赖（npm install）')
 }
 
 // ---------- 3. 构建产物 ----------
@@ -87,7 +95,9 @@ if (fw.ok) {
     console.log('     自动发现的，没有写进配置。想固定下来：`npm run setup -- --write`')
   }
 } else {
-  console.log(bad('找不到固件仓库'))
+  // 用 ⚠️ 而不是 ❌：这一项**不计入阻塞**，规则查询与知识检索照常能用。
+  // 标 ❌ 却不计数，会让结尾的"还有 N 项必须先解决"指错地方。
+  console.log(warn('找不到固件仓库（不阻塞：只影响工程检查与构建烧录类工具）'))
   console.log(firmwareNotFoundMessage(fw.tried).split('\n').map((l) => `     ${l}`).join('\n'))
   console.log('     （只影响工程检查与构建烧录类工具；规则查询与知识检索不受影响）')
 }
@@ -100,11 +110,11 @@ if (existsSync(teamFile)) {
     console.log(ok(`config/team.json —— ${t.team} ${t.season} 赛季「${t.theme ?? '主题待定'}」`))
   } catch (e) {
     console.log(bad(`config/team.json 解析失败：${e.message}`))
-    blocking++
+    block(`config/team.json 解析失败：${e.message}`)
   }
 } else {
   console.log(bad('缺 config/team.json'))
-  blocking++
+  block('缺 config/team.json')
 }
 const rules = repoPaths.rulesRoot()
 if (existsSync(rules)) {
@@ -153,15 +163,25 @@ try {
   execFileSync(process.execPath, [join(REPO, 'scripts', 'link-host-packages.mjs'), '--check'], { stdio: 'pipe' })
   console.log(ok('插件与宿主使用同一份宿主包'))
 } catch (e) {
-  // 退出码 2 = 本机根本没装过 dsh，那不是双实例风险，只是还没到那一步。
-  // 两者混为一谈会让人对着一个不存在的问题排查。
+  // 三种失败要分开说，因为对应的动作完全不同：
+  //   2 = 本机根本没有 dsh 运行时 —— 还没到双实例这一步，不是风险
+  //   3 = 有运行时但版本对不上 —— 让脚本自己把找到了什么讲清楚，别在这里复述
+  //   其它 = 版本对得上、只是还没联接 —— 跑一下脚本就好
+  // 早先 3 和"没联接"是同一条分支，于是给出的建议是"跑脚本修复"，
+  // 而那条命令在版本不一致时必然再失败一次；人照做、失败、无从下手。
   if (e.status === 2) {
-    console.log(warn('本机还没有 dsh 运行时，无法检查 —— 先跑 `npm run dsh:config` 让 npx 把它下下来'))
+    console.log(warn('本机还没有 dsh 运行时，无法检查'))
     console.log('       只想跑 npm run check / npm run test 的话，这项可以不管。')
+    console.log('       要用 dsh：`npm install` 会把锁定版运行时装进本仓库。')
+  } else if (e.status === 3) {
+    console.log(bad('宿主运行时版本与本仓库锁定的不一致'))
+    const detail = (e.stderr ?? Buffer.alloc(0)).toString('utf8').trimEnd()
+    if (detail) console.log(detail.split('\n').map((l) => `     ${l}`).join('\n'))
+    block('宿主运行时版本不一致（详见 [5.6]）')
   } else {
     console.log(warn('存在双实例风险 —— 跑 `node scripts/link-host-packages.mjs` 修复'))
     console.log('       npm install 之后要重跑一次：装依赖会把联接变回普通目录。')
-    blocking++
+    block('宿主包双实例风险（node scripts/link-host-packages.mjs）')
   }
 }
 
@@ -205,13 +225,22 @@ try {
 }
 
 // ---------- 结论 ----------
-console.log(`\n${'─'.repeat(60)}`)
-if (blocking === 0) {
+console.log(`
+${'─'.repeat(60)}`)
+if (blockers.length === 0) {
   console.log('可以用了。接下来：')
   console.log('  npm run verify        # 跑一遍类型检查 / 构建 / 测试')
   console.log('  npm run dsh:install   # 装进 dsh 的 rcs-dev profile')
   console.log('  npm run dsh:start     # 启动，等打印出 dsh web 地址再开浏览器')
 } else {
-  console.log(`还有 ${blocking} 项必须先解决，见上面标 ❌ 的条目。`)
+  console.log(`还有 ${blockers.length} 项必须先解决：`)
+  for (const reason of blockers) console.log(`  · ${reason}`)
 }
-process.exit(blocking === 0 ? 0 : 1)
+
+// 不要用 process.exit()。第 7 节发过网络请求，undici 的套接字还在关闭中，
+// 这时强制退出会在 Windows 上触发 libuv 断言：
+//   Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c, line 76
+// 进程随即以 127 崩掉 —— 自检明明跑完了，最后一行却是一句看不懂的 C 断言，
+// 而且退出码也是错的（127 而不是 1）。设 exitCode 让事件循环自然收尾，
+// 实测多等不到一秒。
+process.exitCode = blockers.length === 0 ? 0 : 1

@@ -21,6 +21,7 @@
     "dsh:start:no-rcs": "node scripts/dsh.mjs --profile rcs-dev --patch ./dsh4rcs-disabled.cordis.yml",
     "dsh:start:competition": "node scripts/dsh.mjs --profile rcs-dev --patch ./dsh4rcs-competition.cordis.yml",
     "dsh:install": "npm run build -- --install-stage && node scripts/dsh.mjs plugin --profile rcs-dev add ./packages/dsh-rcs-core ./packages/dsh-rcs-guard ./packages/dsh-rcs-rules ./packages/dsh-rcs-control ./packages/dsh-rcs-kb ./packages/dsh-rcs-ui-client ./packages/dsh-rcs-train",
+    "dsh:uninstall": "node scripts/dsh.mjs plugin --profile rcs-dev remove dsh-rcs-core dsh-rcs-guard dsh-rcs-rules dsh-rcs-control dsh-rcs-kb dsh-rcs-ui-client dsh-rcs-train",
     "dsh:patch": "node scripts/dsh.mjs --profile web --patch ./dev.cordis.yml",
     "dsh:patch:config": "node scripts/dsh.mjs --profile web --dump-config --patch ./dev.cordis.yml",
     "rules:import": "node scripts/docx-to-rules.mjs",
@@ -38,6 +39,7 @@
     "dsh:start / dsh:config —— 用装好的 rcs-dev profile（日常用这个）",
     "dsh:start:rcs / dsh:start:no-rcs —— 启用或关闭整套 dsh4rcs（切换需重启 dsh）",
     "dsh:start:competition —— 关掉培训工具（rcs_train_*），其余照常。培训与比赛的差别只在工具集，",
+    "dsh:uninstall —— 从 rcs-dev profile 卸载全部 7 个插件（profile 本身保留）。只卸一个就直接 `node scripts/dsh.mjs plugin --profile rcs-dev remove <包名>`。",
     "                         危险度判定不因此改变 —— 培训一样要烧代码、也用 F407。",
     "dsh:install          —— 重新构建并装进 rcs-dev profile（改了代码后跑）",
     "kb:sync / kb:dry      —— 不启动 dsh 直接同步飞书资料；--dry 只遍历不抓正文，先看范围对不对",
@@ -67,7 +69,7 @@
     "overrides 在一处把整棵树钉死，插件那边的 \"*\" 保持不动。"
   ],
   "engines": {
-    "node": ">=22"
+    "node": ">=22.18"
   },
   "$verifyComment": "顺序是 typecheck -> build -> test：部分测试加载 packages/*/lib 的构建产物，先测后构建会拿到上一次的旧产物，报出令人困惑的失败。",
   "$postinstallComment": "npm install 会把 node_modules/@deepseek-ai 下的宿主包联接变回普通目录，造成与 dsh 运行时的双实例（code mode 会因此崩溃并弄坏会话历史）。装完自动重建联接。--postinstall 让它在没装过 dsh 的机器上安静跳过：否则 npm install 会因 postinstall 非零退出而整个失败，队友第一次 clone 和 CI 都会卡在这里。"

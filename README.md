@@ -14,7 +14,12 @@
 
 没有发布包，**clone 是唯一的获取方式** —— 插件以本地路径装进 dsh profile，本来就需要源码在本机。
 
+**克隆到 D 盘的工作目录，不要放在主目录下。** 学员工作目录 `rcs-training/`
+跟着本仓库走，clone 在 `C:/Users/<你>/` 下面就会把它一并拖到系统盘；
+固件仓库 `RCS_code` 也约定放在同级目录，同理。
+
 ```bash
+mkdir D:/code; cd D:/code
 git clone https://github.com/XMU-RCS-rc/dsh4rcs.git
 cd dsh4rcs
 npm install
@@ -32,7 +37,7 @@ npm run dsh:start      # 等打印出 dsh web 地址再开浏览器
 
 | 必需 | 说明 |
 |---|---|
-| Node.js ≥ 22 | 用到原生 TypeScript 剥离 |
+| Node.js ≥ 22.18 | 用到原生 TypeScript 剥离，22.18 起才默认开启 |
 | DeepSeek Harness `0.1.0-rc.6` | 版本必须与 profile 一致，**不能漂**，见[排错](./docs/troubleshooting.md) |
 
 | 可选 | 缺了会怎样 |

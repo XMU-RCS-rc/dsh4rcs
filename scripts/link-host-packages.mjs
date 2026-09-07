@@ -33,12 +33,30 @@
  * `npm install` 会把联接重新变回普通目录，所以装完依赖要再跑一次本脚本。
  * `npm run setup` 会自动处理。
  *
- * 只在**版本完全一致**时才联接 —— 版本不同就说明该升级仓库依赖，
- * 而不是偷偷指到另一个版本上。
+ * 只在**版本完全一致**时才联接。版本不一致时**不要改仓库的 package.json**：
+ * 仓库锁的是验证过的那一版，漂掉的是本机运行时。npx 缓存目录名是调用规格的哈希，
+ * 建好之后就不再重新解析依赖，而 dsh 把兄弟包声明成 `^` 范围 —— 同一条拉取命令
+ * 在不同时间建出来的树并不一样。正确的修法是让本仓库自己装一份锁定版运行时。
  */
 import { existsSync, lstatSync, readFileSync, rmSync, symlinkSync, renameSync, readdirSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+// 版本选择逻辑放在 rcs-core 里是为了能注入依赖做单测：挑错宿主的后果是会话历史
+// 被弄坏，这段判断必须有测试兜着，不能只活在一个脚本里。
+//
+// 用动态 import 而不是静态，是因为本脚本由 postinstall 调用，而加载 .ts 依赖
+// Node 的原生类型剥离（22.18 起默认开启）。版本不够时静态 import 会让
+// `npm install` 直接死在一句 ERR_UNKNOWN_FILE_EXTENSION 上 —— 那是队友第一次
+// clone 时最难自己看懂的一种失败。
+const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number)
+if (nodeMajor < 22 || (nodeMajor === 22 && nodeMinor < 18)) {
+  console.log(`需要 Node 22.18 或更高（当前 ${process.versions.node}）—— 本仓库用到了原生 TypeScript 剥离。`)
+  process.exit(process.argv.includes('--postinstall') ? 0 : 2)
+}
+const { selectHostScope, hostScopeNotFoundMessage } = await import(
+  '../packages/rcs-core/src/dsh-runtime.ts'
+)
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const SCOPE = join(REPO, 'node_modules', '@deepseek-ai')
@@ -91,23 +109,19 @@ const mode = process.argv.includes('--check') ? 'check' : process.argv.includes(
 const fromPostinstall = process.argv.includes('--postinstall')
 
 /**
- * 找到 dsh 运行时实际使用的 node_modules。
- *
- * npx 缓存位置随平台不同：Windows 在 `%LOCALAPPDATA%\npm-cache\_npx`，
- * Linux/macOS 在 `~/.npm/_npx`。两处都找一遍 —— 队里目前都是 Windows，
- * 但 CI 跑 Linux，写死一个平台会让脚本在那边永远报"找不到"。
+ * 本仓库要求的宿主包版本 —— 判据来自 package.json 的 overrides，
+ * 而不是"宿主装了什么"。反过来拿宿主去改仓库是本末倒置：
+ * 插件是按锁定版的类型定义写并验证的。
  */
-function findHostScope() {
-  const home = process.env['USERPROFILE'] ?? process.env['HOME'] ?? ''
-  const caches = [join(process.env['LOCALAPPDATA'] ?? '', 'npm-cache', '_npx'), join(home, '.npm', '_npx')]
-  for (const cache of caches) {
-    if (!existsSync(cache)) continue
-    for (const dir of readdirSync(cache)) {
-      const p = join(cache, dir, 'node_modules', '@deepseek-ai')
-      if (existsSync(join(p, 'dsh-tools', 'package.json'))) return p
-    }
+function wantedVersions() {
+  const pkg = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8'))
+  const overrides = pkg.overrides ?? {}
+  const wanted = {}
+  for (const name of HOST_PACKAGES) {
+    const v = overrides[`@deepseek-ai/${name}`]
+    if (typeof v === 'string') wanted[name] = v
   }
-  return undefined
+  return wanted
 }
 
 const version = (dir) => {
@@ -125,18 +139,28 @@ const isLink = (p) => {
   }
 }
 
-const host = findHostScope()
-if (!host) {
+const WANTED = wantedVersions()
+const picked = selectHostScope(WANTED, { repoScope: SCOPE })
+
+if (!picked.ok) {
   if (fromPostinstall) {
-    // 还没装过 dsh 是完全正常的状态（第一次 clone、只想跑 npm run check、CI）。
-    // 这里失败会让 npm install 整个失败，代价远大于收益。
-    console.log('（跳过宿主包联接：本机还没有 dsh 运行时。装好 dsh 后跑 `npm run setup` 即可。）')
+    // 还没装过 dsh、或者装的版本不对，都不该让 `npm install` 整个失败：
+    // 第一次 clone、CI、只想跑 npm run check 的人都会卡在这里。
+    // 双实例风险由 `npm run setup` 作为阻塞项报告，postinstall 只是顺手维护。
+    console.log('（跳过宿主包联接：本机还没有版本一致的 dsh 运行时。跑 `npm run setup` 看详情。）')
     process.exit(0)
   }
-  console.error('找不到 dsh 运行时的 node_modules（npx 缓存）。先跑一次 `npm run dsh:config` 让 npx 把它下下来。')
-  process.exit(2)
+  console.error(hostScopeNotFoundMessage(WANTED, picked.candidates))
+  // 退出码分开：2 = 本机压根没有运行时，3 = 有但版本不对。
+  // 合成一个的话，setup.mjs 只能笼统说"还没装 dsh"，而那句话对后者是错的，
+  // 会让人去装一个已经装了的东西。
+  process.exit(picked.candidates.length === 0 ? 2 : 3)
 }
-console.log(`宿主包位置：${host}\n`)
+
+const host = picked.scope
+console.log(`宿主包位置：${host}`)
+console.log(`（来源：${picked.source}）`)
+console.log()
 
 let changed = 0
 let mismatch = 0
