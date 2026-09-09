@@ -12,6 +12,7 @@ import {
   selectHostScope,
   hostScopeNotFoundMessage,
 } from '../src/dsh-runtime.ts'
+import { fixturePath } from './fixture-path.ts'
 
 describe('npx 缓存定位', () => {
   it('Windows 同时检查 LOCALAPPDATA 与用户目录', () => {
@@ -152,16 +153,19 @@ const WANT = { 'dsh-tools': '0.1.0-rc.6', cordis: '4.0.1', schemastery: '3.18.1'
 
 /** 一个缓存目录里的一整套宿主包。 */
 function cacheEntry(root: string, dir: string, tools: string, cordis: string, schema: string) {
-  const scope = `${root}/${dir}/node_modules/@deepseek-ai`
+  const scope = join(root, dir, 'node_modules', '@deepseek-ai')
   return {
-    [`${scope}/dsh-tools/package.json`]: pkg(tools),
-    [`${scope}/cordis/package.json`]: pkg(cordis),
-    [`${scope}/schemastery/package.json`]: pkg(schema),
+    [join(scope, 'dsh-tools', 'package.json')]: pkg(tools),
+    [join(scope, 'cordis', 'package.json')]: pkg(cordis),
+    [join(scope, 'schemastery', 'package.json')]: pkg(schema),
   }
 }
 
 describe('宿主作用域选择', () => {
-  const ROOT = 'C:/cache/_npx'
+  // 固件路径必须两个平台都绝对。写死 'C:/cache/_npx' 在 POSIX 上是相对路径：
+  // selectHostScope 内部用 join 拼，断言里却用 resolve 比，后者会按 cwd 补全，
+  // 于是 Windows 全绿、ubuntu 挂在一句路径对不上的断言里。
+  const ROOT = fixturePath('cache', '_npx')
 
   it('缓存里有漂移版本时，仍然选中版本一致的那个目录', () => {
     // aaa 排在前面 —— 老实现"找到第一个就用"会挑中它，联接过去就是双实例。
@@ -172,7 +176,7 @@ describe('宿主作用域选择', () => {
     const got = selectHostScope(WANT, { roots: [ROOT], deps })
     expect(got.ok).toBe(true)
     if (got.ok) {
-      expect(got.scope).toBe(resolve(`${ROOT}/zzz/node_modules/@deepseek-ai`))
+      expect(got.scope).toBe(join(ROOT, 'zzz', 'node_modules', '@deepseek-ai'))
       expect(got.source).toBe('npx 缓存')
     }
   })
@@ -185,12 +189,12 @@ describe('宿主作用域选择', () => {
   })
 
   it('仓库自己装了锁定版时优先用仓库，npx 缓存不参与', () => {
-    const repo = 'D:/repo/node_modules/@deepseek-ai'
+    const repo = fixturePath('repo', 'node_modules', '@deepseek-ai')
     const deps = fakeFs({
-      [`${repo}/dsh/package.json`]: pkg('0.1.0-rc.6'),
-      [`${repo}/dsh-tools/package.json`]: pkg('0.1.0-rc.6'),
-      [`${repo}/cordis/package.json`]: pkg('4.0.1'),
-      [`${repo}/schemastery/package.json`]: pkg('3.18.1'),
+      [join(repo, 'dsh', 'package.json')]: pkg('0.1.0-rc.6'),
+      [join(repo, 'dsh-tools', 'package.json')]: pkg('0.1.0-rc.6'),
+      [join(repo, 'cordis', 'package.json')]: pkg('4.0.1'),
+      [join(repo, 'schemastery', 'package.json')]: pkg('3.18.1'),
       ...cacheEntry(ROOT, 'aaa', '0.1.0-rc.8', '4.0.2', '3.18.2'),
     })
     const got = selectHostScope(WANT, { repoScope: repo, roots: [ROOT], deps })
@@ -201,11 +205,11 @@ describe('宿主作用域选择', () => {
   it('仓库没装 dsh 时不把仓库当宿主候选', () => {
     // 仓库里只有 npm 装的三个包，没有 dsh 本体 —— 那不是运行时，
     // 认成宿主会变成"自己联接自己"，什么也没修好却报成功。
-    const repo = 'D:/repo/node_modules/@deepseek-ai'
+    const repo = fixturePath('repo', 'node_modules', '@deepseek-ai')
     const deps = fakeFs({
-      [`${repo}/dsh-tools/package.json`]: pkg('0.1.0-rc.6'),
-      [`${repo}/cordis/package.json`]: pkg('4.0.1'),
-      [`${repo}/schemastery/package.json`]: pkg('3.18.1'),
+      [join(repo, 'dsh-tools', 'package.json')]: pkg('0.1.0-rc.6'),
+      [join(repo, 'cordis', 'package.json')]: pkg('4.0.1'),
+      [join(repo, 'schemastery', 'package.json')]: pkg('3.18.1'),
       ...cacheEntry(ROOT, 'aaa', '0.1.0-rc.6', '4.0.1', '3.18.1'),
     })
     const got = selectHostScope(WANT, { repoScope: repo, roots: [ROOT], deps })
