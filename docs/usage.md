@@ -150,10 +150,12 @@ npm run dsh:start:competition   # 比赛：关掉培训工具，安全层固定 
 ### 改了代码之后
 
 ```bash
-npm run verify        # typecheck → 构建 → 557 个测试
+npm run verify        # typecheck → 构建 → 测试
 npm run dsh:install   # 重新构建并把 7 个插件装进 profile
 npm run dsh:start
 ```
+
+队里推了新版本、要把本机更新过来，见 [install.md 的「更新」一节](./install.md#更新)。
 
 ### 不启动 dsh 也能用（适合进 CI）
 
@@ -253,7 +255,7 @@ npm run dsh:config
 | `docs/usage.md` | 本文 —— 总览与使用 |
 | `README.md` | 安装、总览、安全层、文档导航 |
 | `docs/features.md` | 功能清单、验证阶梯、版本新鲜度、还缺什么 |
-| `docs/install.md` | 目录布局、装进其它 profile、配置解析链 |
+| `docs/install.md` | 更新步骤、目录布局、装进其它 profile、配置解析链 |
 | `docs/troubleshooting.md` | 排错 |
 | `docs/acceptance-prompts.md` | 验收提示词：真实模型 + 真实 dsh 逐条核对 |
 | `CONTRIBUTING.md` | 参与开发 |

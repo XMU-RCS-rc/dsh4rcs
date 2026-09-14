@@ -248,7 +248,9 @@ export async function checkPluginFreshness(
     current: short,
     latest: remoteSha.slice(0, 7),
     detail: `origin/${branch} 上的 ${remoteSha.slice(0, 7)} 本地还没有，这份代码落后了。`,
-    action: '`git pull` 之后跑 `npm install && npm run dsh:install`（依赖或工具可能一起变了）',
+    action:
+      '`git pull` 之后跑 `npm install && npm run dsh:install`，再重启 dsh' +
+      '（依赖或工具可能一起变了；每一步的用处见 docs/install.md 的「更新」一节）',
   }
 }
 

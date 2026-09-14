@@ -1,6 +1,41 @@
 # 安装与配置细节
 
-README 里是最短路径，够日常使用。这里放两类内容：**装到非默认位置**，以及**配置怎么解析**。
+README 里是最短路径，够日常使用。这里放三类内容：**怎么更新**、**装到非默认位置**，以及**配置怎么解析**。
+
+---
+
+## 更新
+
+队里推了新版本，先在跑 dsh 的那个终端里 Ctrl+C 停掉它，再在仓库根目录按顺序跑：
+
+```powershell
+git pull
+npm install            # 依赖或锁定的 dsh 版本可能跟着变
+npm run dsh:install    # 重新构建并装进 profile，最后一行是「完成。」才算装好
+npm run dsh:start      # 或 dsh:start:training / dsh:start:competition
+```
+
+这和 `rcs_version_status` 工具、`npm run setup` 最后一节给的建议是同一串命令。
+不确定自己是不是最新，就跑 `npm run setup` 看「版本新鲜度」，或在 dsh 里问一句「插件是不是最新的」。
+
+| 步骤 | 做什么 | 什么时候可以跳过 |
+|---|---|---|
+| `git pull` | 拿到新代码 | — |
+| `npm install` | 装回 `package-lock.json` 锁定的依赖，包括锁定版的 dsh 运行时；postinstall 顺带把宿主包联接重新指好 | 拉下来的提交没碰 `package.json` / `package-lock.json` |
+| `npm run dsh:install` | 重新构建插件，并把插件装进 profile（新加的插件也靠这一步装上）。插件以 link 方式装在 profile 里，dsh 跑的是 `packages/*/lib` 的构建产物 —— 不重新构建就还是旧代码 | 只改了文档 |
+| 重启 dsh | 插件只在 dsh 启动时加载一次，正在跑的进程不会换成新代码 | — |
+
+**最常见的坑是没重启。** 仓库里明明修过的问题在 dsh 里照样出现 —— 比如工具报
+`returned invalid output`、`"value.reason" is not a declared property` —— 先确认 dsh 是在上面几步之后重新启动的。
+
+`git pull` 报本地有改动：多半是 `npm run setup -- --write` 改过 `config/team.json`。先 `git stash`，拉完再 `git stash pop`。
+
+更新不会动这些：学员工作目录 `rcs-training/`（改动小测的记录在里面）、飞书镜像 `data/kb-cache/`、
+profile 里你自己写的 `cordis.patch.yml`。dsh 的会话记录也不动 —— 除非锁定的 dsh 版本变了，见下一段。
+
+**锁定的 dsh 版本变了**（`package.json` 里 `@deepseek-ai/dsh` 的版本号变了）：步骤照上面跑，另外先读
+[排错](./troubleshooting.md)里「升级到 0.1.5-rc.2」那一节 —— 第一次启动会把旧会话迁到新格式，而且是单向的，
+想留退路先把 `~/.dsh/sessions` 复制一份。维护者要换锁定的版本，见同一份文档的「升级 dsh 版本（维护者）」。
 
 ---
 
@@ -49,7 +84,7 @@ code/
 
 启动时横幅会打印实际用的目录和它的来源，对不上先看那一行。
 
-放在别处就设环境变量：
+固件仓库放在别处就设环境变量：
 
 ```powershell
 [Environment]::SetEnvironmentVariable('RCS_CODE_ROOT','E:/path/to/RCS_code','User')
@@ -175,24 +210,6 @@ YAML 重复顶层键只有一个生效，且不报错。
 `package.json` 与 `config/team.json`；指错时明确报错，不会把 profile 根当作
 仓库并产生假绿。
 
-### 推荐目录布局
-
-固件仓库放在**同级目录**即可自动发现，无需任何配置：
-
-```
-code/
-├── dsh4rcs/       ← 本仓库
-└── RCS_code/      ← 固件仓库
-```
-
-放在别处就设环境变量：
-
-```powershell
-[Environment]::SetEnvironmentVariable('RCS_CODE_ROOT','E:/path/to/RCS_code','User')
-```
-
----
-
 ---
 
 ## 配置
@@ -219,7 +236,6 @@ code/
 
 详细步骤见 [`feishu-setup.md`](./feishu-setup.md)。
 
----
 ---
 
 配置字段的完整含义见 [`../config/team.json`](../config/team.json) 里的 `$comment` 键 ——

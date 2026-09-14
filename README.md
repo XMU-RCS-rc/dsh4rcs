@@ -52,6 +52,24 @@ npm run dsh:start      # 等打印出 dsh web 地址再开浏览器；新生培�
 
 ---
 
+## 更新
+
+队里推了新版本（`npm run setup` 的最后一节、或在 dsh 里问一句「插件是不是最新的」都会告诉你），
+先在跑 dsh 的那个终端里 Ctrl+C 停掉它，再在仓库根目录跑：
+
+```bash
+git pull
+npm install            # 依赖或锁定的 dsh 版本可能跟着变
+npm run dsh:install    # 重新构建并装进 profile，最后一行是「完成。」才算装好
+npm run dsh:start      # 新生培训用 dsh:start:training，比赛用 dsh:start:competition
+```
+
+**只 `git pull` 不够，不重启也不够。** 插件以 link 方式装在 profile 里，dsh 跑的是 `packages/*/lib` 的构建产物，
+而且只在启动时加载一次 —— 仓库里明明修过的问题（比如工具报 `returned invalid output`），在没重新构建、
+没重启的 dsh 里照样出现。每一步的用处、什么情况可以跳过、跨 dsh 版本要注意什么，见 [`docs/install.md`](./docs/install.md#更新)。
+
+---
+
 ## 快速开始
 
 启动后在对话里直接问。**会话预设建议选「标准模式」** —— PTC 模式（原 Code 模式）在 rc.6 下因宿主包双实例崩溃过；0.1.5-rc.2 的依赖树已核实每个宿主包只有一份，但 PTC 模式本身还没实测，见[排错](./docs/troubleshooting.md)。
@@ -154,7 +172,7 @@ packages/
 |---|---|
 | [`docs/usage.md`](./docs/usage.md) | 使用手册：每个工具的参数、返回与典型问法 |
 | [`docs/features.md`](./docs/features.md) | 功能清单、验证阶梯、版本新鲜度、还缺什么 |
-| [`docs/install.md`](./docs/install.md) | 目录布局、装进其它 profile、配置解析链、飞书凭证 |
+| [`docs/install.md`](./docs/install.md) | **更新步骤**、目录布局、装进其它 profile、配置解析链、飞书凭证 |
 | [`docs/troubleshooting.md`](./docs/troubleshooting.md) | 排错：版本锁死、双实例、启动失败 |
 | [`docs/acceptance-prompts.md`](./docs/acceptance-prompts.md) | 验收提示词：在 dsh 里逐条输入，对着 RCS_code 真实内容核对每个工具 |
 | [`CONTRIBUTING.md`](./CONTRIBUTING.md) | 参与开发：本地流程、改动约定、CI |
