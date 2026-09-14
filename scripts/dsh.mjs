@@ -22,7 +22,7 @@
  *   node scripts/dsh.mjs plugin --profile rcs-dev add ./packages/dsh-rcs-control
  */
 import { existsSync, readFileSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn, spawnSync } from 'node:child_process'
 
@@ -30,13 +30,18 @@ import { spawn, spawnSync } from 'node:child_process'
 // 而本文件在顶层就启动 dsh（没有 main 守卫），不能被 import。
 import { PINNED_DSH } from '../packages/rcs-core/src/versions.ts'
 import {
+  bootedProfile,
   ensureAppendOnlyReporter,
   findCachedDsh,
   heartbeatLine,
   isInteractive,
   normalizeChildExit,
+  patchFiles,
+  patchSetsConfig,
   pluginInstallStage,
+  resolveDshHome,
 } from '../packages/rcs-core/src/dsh-runtime.ts'
+import { profileBootProblem } from '../packages/rcs-core/src/profile-manifest.ts'
 
 /** 本插件验证过的 dsh 版本。改动前请重跑 `npm run verify`。 */
 export const PINNED = PINNED_DSH
@@ -81,8 +86,67 @@ if (args[0] === 'plugin') {
 }
 if (installStage) note(installStage)
 
+/**
+ * 启动前看一眼 dsh4rcs 管的那个 profile（`npm run dsh:start` 起的就是它）。
+ * 缺网页界面的 profile 起来不打印任何东西、也不退出，人只会以为还在加载 ——
+ * 这种直接拦下并给出修法。别的 profile 不归本仓库管，不看。见 docs/troubleshooting.md。
+ * 返回 true 表示拦下了。
+ */
+function refuseBrokenProfile() {
+  const profile = bootedProfile(args)
+  if (profile === undefined || profile !== (process.env['DSH4RCS_PROFILE'] ?? 'rcs-dev')) return false
+  const manifestPath = join(resolveDshHome(), 'profiles', profile, 'package.json')
+  let manifest
+  if (existsSync(manifestPath)) {
+    try {
+      manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    } catch {
+      return false // 清单本身坏了，交给 dsh 自己报
+    }
+  }
+  const problem = profileBootProblem(manifest, { profile, manifestPath })
+  if (!problem) return false
+  const [first, ...rest] = problem.message.split('\n')
+  note(`[dsh] ${problem.level === 'block' ? '没有启动：' : '注意：'}${first}`)
+  for (const line of rest) note(`      ${line}`)
+  return problem.level === 'block'
+}
+
+/**
+ * 启动 overlay 会整段替换 profile 里 rcs-guard 的 config（dsh 的 patch 不合并 config）。
+ * profile 里若也给 rcs-guard 配了 config（比如加了 extraL2），这次启动它不生效 ——
+ * 自定义的 L2 工具退回 L0、不再弹确认。这种事不能悄悄发生，所以说一声。
+ */
+function warnGuardConfigShadowed() {
+  const profile = bootedProfile(args)
+  if (profile === undefined) return
+  const read = (path) => {
+    try {
+      return readFileSync(path, 'utf8')
+    } catch {
+      return ''
+    }
+  }
+  const shadowing = patchFiles(args).filter((file) => patchSetsConfig(read(resolve(file)), 'rcs-guard'))
+  if (shadowing.length === 0) return
+  // dsh 叠加的顺序是 bundle → profile 的 cordis.patch.yml → dsh home 的 cordis.patch.yml → --patch，
+  // 前两层用户层里的 guard 配置都会被 overlay 盖掉。
+  const home = resolveDshHome()
+  const userLayers = [join(home, 'profiles', profile, 'cordis.patch.yml'), join(home, 'cordis.patch.yml')]
+  const shadowed = userLayers.filter((path) => patchSetsConfig(read(path), 'rcs-guard'))
+  if (shadowed.length === 0) return
+  note(`[dsh] 注意：${shadowed.join('、')} 里给 rcs-guard 配的 config 这次不生效 ——`)
+  note(`      ${shadowing.join('、')} 会整段替换它（dsh 的 patch 不合并 config），extraL2 等以后者为准。`)
+  note('      队里的自定义 L2 工具请加在 dsh4rcs-training / dsh4rcs-competition 两份 overlay 的 extraL2 里。')
+}
+
+const blocked = refuseBrokenProfile()
+if (!blocked) warnGuardConfigShadowed()
+
 let status
-if (found) {
+if (blocked) {
+  status = 1
+} else if (found) {
   if (!process.env['DSH_QUIET']) console.error(`[dsh] 使用 ${found.source}`)
   const result = spawnSync(process.execPath, [found.bin, ...args], { stdio: 'inherit' })
   if (result.error) {

@@ -390,7 +390,7 @@ data/rules/
 ```typescript
 // packages/dsh-rcs-guard/src/index.ts —— 与真实实现一致
 //
-// 注意三处与早期文档示例不同的 API（已对照 dsh-tools@0.1.0-rc.6 的 .d.ts 核实）：
+// 注意三处与早期文档示例不同的 API（已对照 dsh-tools@0.1.5-rc.2 的 .d.ts 核实，与 rc.1、rc.6 一致）：
 //   1. tools/pre-execute 是 **waterfall**，签名 (exec, next) => Promise<PreToolDecision>
 //   2. PreToolDecision 是**对象**：{kind:'allow'} | {kind:'deny',reason} | {kind:'ask',reason?}
 //   3. ToolGuard 返回**拒绝原因字符串**（undefined 表示不干预），不是布尔

@@ -6,7 +6,7 @@
  * dsh 目前是 developer preview（本机 launcher 是不带版本锁的
  * `npx @deepseek-ai/dsh web`，会自己漂到新版），API 变动只会打到这个文件。
  *
- * 本文件用到的 API 均已对照本机 `@deepseek-ai/dsh-tools@0.1.0-rc.6` 的
+ * 本文件用到的 API 均已对照本机 `@deepseek-ai/dsh-tools@0.1.5-rc.2` 的
  * `lib/types/*.d.ts` 核实，并通过 `tsc --noEmit` 全量类型检查：
  *   - defineTool<S, O>(options): ToolDefinition
  *   - ctx.tools.register(def): () => void        // 返回 disposer，插件卸载自动反注册
@@ -25,7 +25,9 @@ import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { ToolCallView, ToolResultView, ToolResult, JsonValue } from '@deepseek-ai/dsh-tools'
+import type { ToolCallView, ToolResultView, ToolResult } from '@deepseek-ai/dsh-tools'
+// 0.1.5 起 dsh-tools 不再转出 JsonValue，它挪到了 dsh-util-values —— presentationMeta 的返回类型就是这一份。
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
 import type { CheckResult } from '../../rcs-core/src/types.ts'
 import { loadJsonConfig } from '../../rcs-core/src/index.ts'

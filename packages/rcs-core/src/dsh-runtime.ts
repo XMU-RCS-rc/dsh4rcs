@@ -6,6 +6,8 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
+import { PNPM_MAJOR } from './versions.ts'
+
 export type CachedDsh = { bin: string; source: string }
 
 type CacheDeps = {
@@ -31,6 +33,23 @@ export function npxCacheRoots(env: Record<string, string | undefined> = process.
     home ? join(home, '.npm', '_npx') : '',
   ].filter(Boolean).map((path) => resolve(path))
   return [...new Set(candidates)]
+}
+
+/**
+ * dsh 的 Harness home，与 `@deepseek-ai/dsh-home-paths` 的 `resolveDshHome` 同一条规则：
+ * `$DSH_HOME`（全空白视同未设，`~` 开头按主目录展开），否则 `~/.dsh`。
+ *
+ * 早先 install-plugins 与 link-host-packages 都写死了 `~/.dsh`。只要设了 DSH_HOME
+ * （本机的 dsh launcher 就设了），dsh 把插件装进 `$DSH_HOME/profiles/<名>`，脚本却把
+ * 版本钉死写进 `~/.dsh/profiles/<名>`、联接检查也只扫 `~/.dsh` —— 两边各干各的，还都报成功。
+ */
+export function resolveDshHome(env: Record<string, string | undefined> = process.env): string {
+  const home = env['USERPROFILE'] ?? env['HOME'] ?? ''
+  const configured = env['DSH_HOME']
+  const raw = configured !== undefined && configured.trim().length > 0 ? configured : join(home, '.dsh')
+  if (raw === '~') return resolve(home)
+  if (raw.startsWith('~/') || raw.startsWith('~\\')) return resolve(join(home, raw.slice(2)))
+  return resolve(raw)
 }
 
 /**
@@ -106,7 +125,8 @@ export function pluginInstallStage(args: string[]): string | undefined {
     }
     if (!arg.startsWith('-')) count++
   }
-  return `[dsh:install 2/2] 安装 ${count} 个插件到 profile ${profile}`
+  // 编号接在 scripts/install-plugins.mjs 的 1/4…3/4 后面 —— 装插件是那条流程的最后一步。
+  return `[dsh:install 4/4] 安装 ${count} 个插件到 profile ${profile}`
 }
 
 export function normalizeChildExit(
@@ -117,6 +137,151 @@ export function normalizeChildExit(
   if (signal) return { code: 1, missingCommand: false }
   if (platform === 'win32' && code === 9009) return { code: 127, missingCommand: true }
   return { code: code ?? 1, missingCommand: false }
+}
+
+/**
+ * 这次调用会不会**启动** profile；会的话返回 profile 名，供 scripts/dsh.mjs 做启动前检查。
+ *
+ * 只认 `--profile <名>` / `--profile=<名>` 的直接启动。子命令（`plugin`、`web`）、只打印配置就退出的
+ * `--dump-config` / `--dump-default-config`、按模板初始化的 `--from-default-profile`
+ * （install-plugins 第 2 步就是这么调的，那时 profile 还不存在），以及帮助与版本号都不算。
+ * 认不准的一律返回 undefined —— 漏检只是回到原来的行为，误拦却会让人启动不了。
+ */
+export function bootedProfile(args: readonly string[]): string | undefined {
+  if (!(args[0] ?? '').startsWith('-')) return undefined
+  const skip = new Set([
+    '--dump-config',
+    '--dump-default-config',
+    '--from-default-profile',
+    '-h',
+    '--help',
+    '-V',
+    '--version',
+  ])
+  let profile: string | undefined
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index] ?? ''
+    if (skip.has(arg.split('=')[0] ?? '')) return undefined
+    if (arg === '--profile') profile = args[++index]
+    else if (arg.startsWith('--profile=')) profile = arg.slice('--profile='.length)
+  }
+  return profile || undefined
+}
+
+/** `--patch <文件>` / `--patch=<文件>` 给出的 overlay 路径，按出现顺序。 */
+export function patchFiles(args: readonly string[]): string[] {
+  const files: string[] = []
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index] ?? ''
+    if (arg === '--patch' && index + 1 < args.length) files.push(args[++index] ?? '')
+    else if (arg.startsWith('--patch=')) files.push(arg.slice('--patch='.length))
+  }
+  return files
+}
+
+/**
+ * patch 文件里有没有一条 `- id: <id>` 条目带着 `config:`。
+ *
+ * 用来发现「profile 里给 rcs-guard 配过 config，而启动 overlay 又整段替换了它」——
+ * dsh 的 patch 对 config 是整段替换，不是合并：实测 overlay 只写 `mode: training`，
+ * profile 里的 `extraL2` 就没了，那些自定义的 L2 工具随之退回 L0、不再弹确认。
+ *
+ * 只认块格式（`- id: x` 起头，同一条目的下一层键里有 `config:`）；流式写法和 id 不在
+ * 首位的写法认不出，认不出就当没有 —— 漏报只是少一条提醒，不影响启动。
+ * 不为这一件事引入 YAML 解析依赖。
+ */
+export function patchSetsConfig(yaml: string, id: string): boolean {
+  const lines = yaml.split(/\r?\n/)
+  for (let index = 0; index < lines.length; index++) {
+    const head = /^(\s*-\s+)id:\s*['"]?([^'"\s#]+)['"]?\s*(?:#.*)?$/.exec(lines[index] ?? '')
+    if (head === null || head[2] !== id) continue
+    const keyIndent = (head[1] ?? '').length
+    for (let next = index + 1; next < lines.length; next++) {
+      const line = lines[next] ?? ''
+      const body = line.trimStart()
+      if (body === '' || body.startsWith('#')) continue
+      const indent = line.length - body.length
+      if (indent < keyIndent) break
+      if (indent === keyIndent && /^config\s*:/.test(body)) return true
+    }
+  }
+  return false
+}
+
+/* ---------------------------------------------------------------- pnpm 预检 */
+
+export type PnpmCheck =
+  | { ok: true; version: string; warning?: string }
+  | { ok: false; reason: string }
+
+const PNPM_INSTALL = `npm i -g pnpm@${PNPM_MAJOR}`
+
+/**
+ * 从 `pnpm --version` 的输出里取版本号。取**最后一个**像版本号的行：
+ * 在带 `workspaces` 字段的目录里跑，pnpm 会先打一行 `[WARN] The "workspaces" field …`。
+ */
+export function parsePnpmVersion(output: string): string | undefined {
+  const lines = output.split(/\r?\n/).map((line) => line.trim())
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const line = lines[index] ?? ''
+    if (/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(line)) return line
+  }
+  return undefined
+}
+
+/**
+ * `dsh:install` 能不能开工，先看 pnpm —— 装插件那一步由 dsh 转给 profile 目录里的 pnpm。
+ *
+ * 缺 pnpm 时 dsh 在 Windows 上经 cmd 调它（`shell: true`），Node 拿不到 ENOENT，dsh 自己那句
+ * `pnpm not found on PATH` 永远不会出现 —— 人看到的是 cmd 的「'pnpm' 不是内部或外部命令」
+ * 加一句笼统的 `pnpm failed in profile directory`，而那时构建做完了、profile 也建好了，
+ * 留下一个半装的 profile。
+ *
+ * 比 `PNPM_MAJOR` 新只警告不拦：实测 12.4.1 能把当前布局装通，拦下来反而逼人降级。
+ */
+export function checkPnpm(probe: { path?: string | undefined; versionOutput?: string | undefined }): PnpmCheck {
+  if (!probe.path) {
+    return {
+      ok: false,
+      reason: [
+        '本机没有 pnpm。dsh:install 装插件那一步由 dsh 转给 profile 目录里的 pnpm，而 Node 默认没有 pnpm 命令。',
+        `装：${PNPM_INSTALL}（带上 @${PNPM_MAJOR}：不带版本会装到更新的主版本）`,
+        `装完 pnpm --version 应输出 ${PNPM_MAJOR}.x，再重跑。`,
+      ].join('\n'),
+    }
+  }
+  const output = probe.versionOutput ?? ''
+  const version = parsePnpmVersion(output)
+  if (version === undefined) {
+    const tail = output.trim().split(/\r?\n/).slice(-3).join('\n')
+    return {
+      ok: false,
+      reason: [
+        `找到了 pnpm（${probe.path}），但 pnpm --version 没有给出版本号${tail ? '，输出末尾：' : '。'}`,
+        ...(tail ? [tail] : []),
+        `重装：${PNPM_INSTALL}`,
+      ].join('\n'),
+    }
+  }
+  const major = Number(version.split('.')[0])
+  if (major < PNPM_MAJOR) {
+    return {
+      ok: false,
+      reason: [
+        `pnpm ${version} 太旧：本仓库写进 profile 的配置按 pnpm ${PNPM_MAJOR} 的规则写` +
+          `（${PNPM_MAJOR} 起 overrides 只认 pnpm-workspace.yaml）。`,
+        `升级：${PNPM_INSTALL}`,
+      ].join('\n'),
+    }
+  }
+  if (major > PNPM_MAJOR) {
+    return {
+      ok: true,
+      version,
+      warning: `pnpm ${version} 不是本仓库验证用的 ${PNPM_MAJOR}.x。当前布局实测能装通；遇到 pnpm 报错先换回：${PNPM_INSTALL}`,
+    }
+  }
+  return { ok: true, version }
 }
 
 /* ---------------------------------------------------------------- 宿主包作用域 */
@@ -227,7 +392,7 @@ export function selectHostScope(
  * 选不出宿主时给人看的说明。
  *
  * **刻意不说"把 package.json 的版本对齐"** —— 早先就是这么写的，而它指的方向是反的：
- * 仓库锁 rc.6 是对的（插件按 rc.6 的类型定义写并验证过），漂掉的是运行时。
+ * 仓库锁定的版本是对的（插件按它的类型定义写并验证过），漂掉的是运行时。
  * 照着改会把仓库升到一个没验证过的版本，还会撞上服务端与前端版本错配导致的
  * "Loading plugins…" 静默卡死 —— 一条把人引向更糟状态的提示，比不给提示更坏。
  */

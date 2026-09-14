@@ -27,10 +27,6 @@ const PLUGINS = [
   'dsh-rcs-train',
 ]
 
-if (process.argv.includes('--install-stage')) {
-  console.error(`[dsh:install 1/2] 构建 ${PLUGINS.length} 个插件`)
-}
-
 let failed = false
 
 for (const name of PLUGINS) {

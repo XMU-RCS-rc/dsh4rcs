@@ -28,6 +28,15 @@
  * —— 整个会话永久报废，只能新建。而走不走 code mode 是模型自己决定的，
  * 没法靠"别用"规避。
  *
+ * ## 0.1.5 之后还剩什么要做
+ *
+ * 本仓库自带锁定版运行时（`@deepseek-ai/dsh` 是 devDependency），`scripts/dsh.mjs`
+ * 用的就是它，所以仓库这一侧「就是宿主本体」。dsh 0.1.5 起也会自己把安装目录的依赖闭包
+ * 链接到 `$DSH_HOME/profiles/node_modules`，而新版 `dsh:install` 不再往 profile 里装
+ * 宿主包 —— 新建的 profile 这一侧通常没有东西要处理。本脚本仍然管两件事：
+ * 仓库这一侧（npx 缓存当宿主的老路径），以及**升级前留下的旧 profile**：
+ * 那里的联接可能还指着上一代运行时，见下面 processScope 里「联接指向的不是当前宿主」一段。
+ *
  * ## 注意
  *
  * `npm install` 会把联接重新变回普通目录，所以装完依赖要再跑一次本脚本。
@@ -38,7 +47,18 @@
  * 建好之后就不再重新解析依赖，而 dsh 把兄弟包声明成 `^` 范围 —— 同一条拉取命令
  * 在不同时间建出来的树并不一样。正确的修法是让本仓库自己装一份锁定版运行时。
  */
-import { existsSync, lstatSync, readFileSync, rmSync, symlinkSync, renameSync, readdirSync } from 'node:fs'
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  renameSync,
+  readdirSync,
+  unlinkSync,
+} from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -54,19 +74,19 @@ if (nodeMajor < 22 || (nodeMajor === 22 && nodeMinor < 18)) {
   console.log(`需要 Node 22.18 或更高（当前 ${process.versions.node}）—— 本仓库用到了原生 TypeScript 剥离。`)
   process.exit(process.argv.includes('--postinstall') ? 0 : 2)
 }
-const { selectHostScope, hostScopeNotFoundMessage } = await import(
+const { selectHostScope, hostScopeNotFoundMessage, resolveDshHome } = await import(
   '../packages/rcs-core/src/dsh-runtime.ts'
 )
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const SCOPE = join(REPO, 'node_modules', '@deepseek-ai')
 
-/** `~/.dsh/profiles` 的位置。 */
-const PROFILES_DIR = join(
-  process.env['USERPROFILE'] ?? process.env['HOME'] ?? '',
-  '.dsh',
-  'profiles',
-)
+/**
+ * profile 所在目录，按 dsh 的同一条规则解析：`$DSH_HOME/profiles`，没设时 `~/.dsh/profiles`。
+ * 早先写死 `~/.dsh`，设了 DSH_HOME 的机器上这里扫的是一个 dsh 根本不用的目录，
+ * 却照样报「无双实例风险」。
+ */
+const PROFILES_DIR = join(resolveDshHome(), 'profiles')
 
 /**
  * 列出**所有**已存在的 profile。
@@ -75,11 +95,14 @@ const PROFILES_DIR = join(
  * 静默带着双实例风险跑起来 —— 而那个风险的后果是 code mode 崩溃并
  * **永久毁掉会话历史**。写死一个名字省不了几行，代价却是这种级别的故障，
  * 所以改成扫描：有几个 profile 就检查几个，谁也不会被漏掉。
+ *
+ * `profiles/node_modules` 不是 profile：0.1.5 起那是 dsh 自己维护的模块回落目录
+ * （安装目录依赖闭包的符号链接），不归本脚本管。
  */
 function discoverProfileScopes() {
   if (!existsSync(PROFILES_DIR)) return []
   return readdirSync(PROFILES_DIR, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
+    .filter((e) => e.isDirectory() && e.name !== 'node_modules')
     .map((e) => [`profile:${e.name}`, join(PROFILES_DIR, e.name, 'node_modules', '@deepseek-ai')])
     .filter(([, scope]) => existsSync(scope))
 }
@@ -89,7 +112,7 @@ function discoverProfileScopes() {
  *
  * profile 那几份最要紧：dsh 的 loader 从 profile 根解析插件名，所以
  * `ctx.tools`（ToolRuntime 实例）来自 profile 的 dsh-tools；而 dsh-agent-loop
- * 来自 npx 缓存，它用自己那份的符号去读 `ctx.tools[TOOL_RUNTIME_SCHEDULER]`。
+ * 来自运行时，它用自己那份的符号去读 `ctx.tools[TOOL_RUNTIME_SCHEDULER]`。
  * 两份不统一 → 取回 undefined → 无论标准模式还是 code 模式都崩。
  */
 const SCOPES = [['仓库', SCOPE], ...discoverProfileScopes()]
@@ -134,6 +157,24 @@ const version = (dir) => {
 const isLink = (p) => {
   try {
     return lstatSync(p).isSymbolicLink()
+  } catch {
+    return false
+  }
+}
+/** 联接写着的目标；读不出来就是 undefined。只用于诊断输出。 */
+const linkTarget = (p) => {
+  try {
+    return readlinkSync(p)
+  } catch {
+    return undefined
+  }
+}
+/** 两个路径是否落在同一个真实目录上。悬空的联接算不同 —— 那正是要报出来的情形。 */
+const sameDir = (a, b) => {
+  try {
+    const x = realpathSync.native(a)
+    const y = realpathSync.native(b)
+    return process.platform === 'win32' ? x.toLowerCase() === y.toLowerCase() : x === y
   } catch {
     return false
   }
@@ -190,7 +231,9 @@ for (const name of HOST_PACKAGES) {
     console.log(`  ⚠️  ${label}宿主侧没有这个包，跳过`)
     continue
   }
-  if (!existsSync(mine)) {
+  // 用 lstat 判断而不是 existsSync：悬空的联接 existsSync 为 false，
+  // 却正是升级后最该处理的那种（旧运行时删了，联接还在）。
+  if (!existsSync(mine) && !isLink(mine)) {
     console.log(`  ·   ${label}此处未安装，无需处理`)
     continue
   }
@@ -207,16 +250,55 @@ for (const name of HOST_PACKAGES) {
   }
 
   if (isLink(mine)) {
-    console.log(`  ✅ ${label}已联接到宿主`)
+    if (sameDir(mine, theirs)) {
+      console.log(`  ✅ ${label}已联接到宿主`)
+      continue
+    }
+    // 联接还在，指向的却不是当前宿主 —— 换过 dsh 版本、或删过旧运行时之后必然如此。
+    // 早先这里只看「是不是联接」就打勾：升到 0.1.5 后 profile 里的联接仍指着 rc.6 的
+    // npx 缓存，--check 却照样报「已联接到宿主」—— 一个没验过的勾，而它挡的是双实例。
+    const was = linkTarget(mine) ?? '（读不出目标）'
+    if (mode === 'check') {
+      console.log(`  ⚠️  ${label}联接指向的不是当前宿主：${was}`)
+      changed++
+      continue
+    }
+    try {
+      unlinkSync(mine) // 只删联接本身，不碰它指向的目录
+    } catch (e) {
+      console.log(`  ❌ ${label}删不掉旧联接：${e.message}`)
+      mismatch++
+      continue
+    }
+    try {
+      symlinkSync(theirs, mine, 'junction')
+      console.log(`  ✅ ${label}已改联接到当前宿主（${version(theirs)}），原先指向 ${was}`)
+      changed++
+    } catch (e) {
+      try {
+        symlinkSync(was, mine, 'junction')
+      } catch {
+        /* 连旧联接也建不回来，下面那行已经说明了 */
+      }
+      console.log(`  ❌ ${label}重建联接失败：${e.message}`)
+      mismatch++
+    }
     continue
   }
 
   const vMine = version(mine)
   const vTheirs = version(theirs)
   if (vMine !== vTheirs) {
-    // 版本不一致时**不联接** —— 那是依赖该升级了，偷偷指过去只会掩盖问题
-    console.log(`  ❌ ${label}版本不一致：仓库 ${vMine} vs 宿主 ${vTheirs}`)
-    console.log(`     先把 package.json 里的版本对齐再跑本脚本。`)
+    // 版本不一致时**不联接** —— 偷偷指过去只会掩盖问题。
+    // 两种位置的修法不同：仓库的版本以 package.json 为准，漂的是 node_modules；
+    // profile 里的是旧版 dsh:install 装进去的副本，新流程会把它清掉。
+    // 早先这里一律印「先把 package.json 里的版本对齐」—— 方向是反的。
+    console.log(`  ❌ ${label}版本不一致：${where} ${vMine} vs 宿主 ${vTheirs}`)
+    console.log(
+      where === '仓库'
+        ? '     仓库的版本以 package.json 为准：跑 `npm install` 装回锁定版，再跑本脚本。'
+        : '     这是旧版 dsh:install 留在 profile 里的副本 —— 重跑 `npm run dsh:install` 会把它清掉。',
+    )
     mismatch++
     continue
   }
@@ -226,7 +308,6 @@ for (const name of HOST_PACKAGES) {
     changed++
     continue
   }
-  void where
 
   // 原目录先改名保留，联接成功后再删，避免中途失败把依赖弄没
   const backup = `${mine}.npm-copy`

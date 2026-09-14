@@ -18,7 +18,9 @@ import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { ToolCallView, ToolResultView, ToolResult, JsonValue } from '@deepseek-ai/dsh-tools'
+import type { ToolCallView, ToolResultView, ToolResult } from '@deepseek-ai/dsh-tools'
+// 0.1.5 起 dsh-tools 不再转出 JsonValue，它挪到了 dsh-util-values —— presentationMeta 的返回类型就是这一份。
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
 import { JsonRuleSource, searchClauses } from '../../rcs-core/src/rule-source.ts'
 import { diffRuleDocuments } from '../../rcs-core/src/rule-diff.ts'

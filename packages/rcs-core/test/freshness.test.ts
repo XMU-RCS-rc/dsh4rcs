@@ -447,4 +447,32 @@ describe('摘要渲染', () => {
     expect(text).toContain('1 项需要处理')
     expect(text).toContain('不会自动升级或拉取')
   })
+
+  const inSync = fakeGit({
+    'rev-parse': okResult(`${'d'.repeat(40)}\n`),
+    'ls-remote': okResult(`${'d'.repeat(40)}\trefs/heads/main\n`),
+  })
+
+  it('本地比上游还新时不画箭头 —— 「当前 → 上游」会被读成该退回去', async () => {
+    // 锁 0.1.5-rc.2 时 npm 的 latest 还是 rc.1，摘要一度印成「0.1.5-rc.2 → 0.1.5-rc.1」。
+    const report = await checkFreshness({
+      ...base,
+      deps: { run: inSync, fetchJson: (async () => ({ version: '0.1.0-rc.6' })) as JsonFetcher },
+      rules: { currentVersion: 'V0', lastCheckedAt: '2026-08-30' },
+      now: NOW,
+    })
+    const text = summarizeFreshness(report)
+    expect(text).not.toContain('→ 0.1.0-rc.6')
+    expect(text).toContain('比上游 latest（0.1.0-rc.6）还新')
+  })
+
+  it('过时项仍然画箭头，指向上游那一版', async () => {
+    const report = await checkFreshness({
+      ...base,
+      deps: { run: inSync, fetchJson: (async () => ({ version: '9.9.9' })) as JsonFetcher },
+      rules: { currentVersion: 'V0', lastCheckedAt: '2026-08-30' },
+      now: NOW,
+    })
+    expect(summarizeFreshness(report)).toContain('→ 9.9.9')
+  })
 })

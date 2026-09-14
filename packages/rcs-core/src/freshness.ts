@@ -313,8 +313,9 @@ export async function checkHostFreshness(
       latest,
       detail: `上游 latest 已经是 ${latest}，本套件锁定并验证过的是 ${pinned}。`,
       action:
-        '不要直接升。先改 scripts/dsh.mjs 与 profile 的 pnpm-workspace.yaml，' +
-        '再跑 `npm run verify` —— 服务端与前端版本不一致会让网页端静默停在 Loading plugins',
+        '不要直接升。按 docs/troubleshooting.md「升级 dsh 版本」一节：换 package.json 的 ' +
+        'devDependencies 与 overrides、改 rcs-core/src/versions.ts，再跑 `npm run verify` 与 ' +
+        '`npm run dsh:install` —— 服务端与前端版本不一致会让网页端静默停在 Loading plugins',
     }
   }
   return {
@@ -427,7 +428,10 @@ const MARK: Record<FreshnessStatus, string> = { ok: '✅', stale: '⚠️ ', unk
 /** 渲染成人类可读的多行文本。工具与 `npm run setup` 共用，保证两处说法一致。 */
 export function summarizeFreshness(report: FreshnessReport): string {
   const lines = report.items.map((i) => {
-    const head = `${MARK[i.status]} ${i.label}：${i.current}${i.latest && i.latest !== i.current ? ` → ${i.latest}` : ''}`
+    // 箭头只给过时项：「当前 → 上游」读起来就是「该升到这一版」。本地领先上游（锁的 rc 比 latest 新、
+    // 分支领先 origin）时画箭头，会被读成「该退回去」—— 那两种情况的说明已经写在 detail 里。
+    const arrow = i.status === 'stale' && i.latest && i.latest !== i.current ? ` → ${i.latest}` : ''
+    const head = `${MARK[i.status]} ${i.label}：${i.current}${arrow}`
     const detail = `     ${i.detail}`
     return i.action ? `${head}\n${detail}\n     → ${i.action}` : `${head}\n${detail}`
   })

@@ -18,7 +18,17 @@
  * 服务端与前端版本不一致时，网页端会**静默**停在 "Loading plugins…" ——
  * cordis 的 inject 是无限等待且不报错的，控制台里连线索都没有。
  */
-export const PINNED_DSH = '0.1.0-rc.6'
+export const PINNED_DSH = '0.1.5-rc.2'
 
 /** 宿主包在 npm 上的包名，用于查询上游最新版本。 */
 export const DSH_PACKAGE = '@deepseek-ai/dsh'
+
+/**
+ * `npm run dsh:install` 装插件用的 pnpm 主版本 —— `dsh plugin` 把参数原样转给 profile 目录里的 pnpm。
+ *
+ * 11 是下限：11 起 overrides 只认 `pnpm-workspace.yaml`，本仓库写进 profile 的版本钉死与
+ * `allowBuilds` 都按这一代的规则写。它不是上限，但 npm 上的 latest 已经是 12，不带版本的
+ * `npm i -g pnpm` 会装到 12 —— 所以文档与提示一律写 `pnpm@11`。12 只警告不拦：
+ * 实测 12.4.1 能把当前布局装通（当前布局只有 link: 依赖，allowBuilds 在 12 下没被验证到）。
+ */
+export const PNPM_MAJOR = 11

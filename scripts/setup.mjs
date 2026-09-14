@@ -17,7 +17,9 @@ import { fileURLToPath } from 'node:url'
 
 import { resolveFirmwareRoot, firmwareNotFoundMessage, repoPaths } from '../packages/rcs-core/src/paths.ts'
 import { probeToolchain } from '../packages/rcs-core/src/toolchain.ts'
-import { nodeDeps } from '../packages/rcs-core/src/runner.ts'
+import { nodeDeps, pnpmVersionOutput } from '../packages/rcs-core/src/runner.ts'
+import { checkPnpm } from '../packages/rcs-core/src/dsh-runtime.ts'
+import { PNPM_MAJOR } from '../packages/rcs-core/src/versions.ts'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..')
 const write = process.argv.includes('--write')
@@ -182,6 +184,26 @@ try {
     console.log(warn('存在双实例风险 —— 跑 `node scripts/link-host-packages.mjs` 修复'))
     console.log('       npm install 之后要重跑一次：装依赖会把联接变回普通目录。')
     block('宿主包双实例风险（node scripts/link-host-packages.mjs）')
+  }
+}
+
+// ---------- 5.7 pnpm ----------
+// dsh:install 装插件那一步由 dsh 转给 profile 目录里的 pnpm，而 Node 默认没有 pnpm 命令。
+// 缺了它 dsh:install 在最后一步失败，Windows 上只报一句 cmd 的「不是内部或外部命令」；
+// 留下的半装 profile 起来要么没有 rcs_* 工具，要么不打印网址、一直挂着。所以算阻塞项。
+console.log('\n[5.7] pnpm（dsh:install 装插件要用）')
+{
+  const pnpmPath = nodeDeps.which('pnpm')
+  const pnpm = checkPnpm({ path: pnpmPath, versionOutput: pnpmPath ? pnpmVersionOutput() : undefined })
+  if (!pnpm.ok) {
+    const [first, ...rest] = pnpm.reason.split('\n')
+    console.log(bad(first))
+    for (const line of rest) console.log(`     ${line}`)
+    block(`没有可用的 pnpm ${PNPM_MAJOR}.x（npm i -g pnpm@${PNPM_MAJOR}）`)
+  } else if (pnpm.warning) {
+    console.log(warn(pnpm.warning))
+  } else {
+    console.log(ok(`pnpm ${pnpm.version}  ${pnpmPath}`))
   }
 }
 

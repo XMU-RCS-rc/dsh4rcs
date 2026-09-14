@@ -1,20 +1,28 @@
-# 比赛/日常开发用的启动覆盖：关掉培训工具，其余照常。
+# 比赛用的启动覆盖：关掉培训工具，安全层固定为 dev 模式。
 #
 # 用法：npm run dsh:start:competition
 #
-# ## 为什么只关 rcs-train
+# ## 为什么把 mode 写死成 dev
 #
-# 培训和比赛的差别**只在工具集**：培训机器多一套 rcs_train_*。
-# 危险度判定不因此改变 —— 培训一样要烧代码、一样会用到 F407。
-# guard 的 mode（dev / training）只影响 L2 确认文案的轻重与 LG 闸门，
-# 两种模式都不会拒绝任何调用。
+# guard 的 mode 是 profile 级配置，改了会一直留着。为上课把 profile 改成 training
+# 却忘了改回来，比赛时就带着培训模式的确认文案与闸门 —— 所以比赛这条命令不继承 profile，
+# 在这里写死。新生培训用 npm run dsh:start:training，模式写死在 dsh4rcs-training.cordis.yml。
+# 两种模式都不会拒绝任何调用，差别见那份文件的开头。
 #
-# ## 为什么默认装着、按需关掉，而不是默认不装
+# ## 为什么关 rcs-train
 #
-# rcs-train 不被调用时不做任何事，装着不碍事；而 30 多个新生各自装机，
-# 少一条要记的命令就少一批人装错。所以默认全装，需要干净环境时再关。
+# 比赛用不到 rcs_train_*。它们不被调用时不做任何事，所以默认装着不碍事 ——
+# 30 多个新生各自装机，少一条要记的命令就少一批人装错；比赛时再关，工具列表干净。
 #
-# 老队员同一台笔记本既要备课又要打比赛，这条命令让他一次切换，
-# 不用重装 profile。
+# 老队员同一台笔记本既要备课又要打比赛，这条命令让他一次切换，不用重装 profile。
+#
+# ## 注意：这里的 config 会整段替换 profile 里 rcs-guard 的 config
+#
+# 与 dsh4rcs-training.cordis.yml 同理：dsh 的 patch 对 config 整段替换，所以 guard 的配置写全。
+# 自定义的 L2 工具要加在两份 overlay 的 extraL2 里。
 - id: rcs-train
   disabled: true
+- id: rcs-guard
+  config:
+    mode: dev
+    extraL2: []

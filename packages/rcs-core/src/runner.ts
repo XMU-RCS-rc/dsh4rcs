@@ -7,14 +7,15 @@
  * 三条约束：
  *   1. **不过 shell。** `spawn` 直接传 argv，不拼命令行字符串 ——
  *      工程路径里带空格、带中文（队内真有「硬件/软件培训知识体系」这种名字）
- *      在 shell 拼接下会被切碎，更别说注入风险。
+ *      在 shell 拼接下会被切碎，更别说注入风险。唯一的例外是 `pnpmVersionOutput`，理由见它的注释。
  *   2. **必须有超时。** 烧录器没插、Keil 弹了个模态框，进程会永远挂着。
  *      超时就杀掉并如实说是超时，而不是让调用方干等。
  *   3. **不抛异常。** 命令跑不起来（ENOENT 等）也返回结构化结果，
  *      让上层统一按「工具链缺失」处理。
  */
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, lstatSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 
 import type { CommandResult, CommandRunner, ProbeDeps } from './toolchain.ts'
@@ -108,6 +109,26 @@ export function whichSync(cmd: string): string | undefined {
     }
   }
   return undefined
+}
+
+/**
+ * 跑一次 `pnpm --version`，原样返回输出（stdout 与 stderr 拼在一起）；判断留给
+ * `dsh-runtime.ts` 的 `checkPnpm`。跑不起来（含超时）返回 undefined，不抛。
+ *
+ * 这是本文件唯一**过 shell** 的调用，是约束 1 的例外：Windows 上 pnpm 通常是 `.cmd` 垫片，
+ * Node 20 起不带 shell 直接 spawn `.cmd` 会被拒（EINVAL）。那边的命令行是写死的一句
+ * `pnpm --version`，不拼任何路径或外部输入，切碎与注入的顾虑都不存在。
+ *
+ * cwd 放到临时目录：在本仓库根跑，pnpm 会先为 package.json 的 `workspaces` 字段打一行 WARN。
+ */
+export function pnpmVersionOutput(): string | undefined {
+  const cwd = tmpdir()
+  const r =
+    process.platform === 'win32'
+      ? spawnSync('pnpm --version', { cwd, encoding: 'utf8', shell: true, timeout: 60_000, windowsHide: true })
+      : spawnSync('pnpm', ['--version'], { cwd, encoding: 'utf8', timeout: 60_000 })
+  if (r.error) return undefined
+  return `${r.stdout}\n${r.stderr}`
 }
 
 /** 真实环境的探测依赖。 */
