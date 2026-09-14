@@ -7,7 +7,7 @@
  * 直接 new 一个 Context 就能验证。
  *
  * 顺带验证一个设计意图：没有 `tools` 服务时，Service 本身依然可用
- * （工具注册包在 `ctx.inject(['tools'], ...)` 里，是可选依赖）。
+ * （工具注册包在 `ctx.inject(['tools', 'rcs'], ...)` 里，是可选依赖）。
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { existsSync } from 'node:fs'

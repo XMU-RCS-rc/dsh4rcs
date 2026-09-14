@@ -368,6 +368,12 @@ export function apply(ctx: Context, config: Config): void {
 
   const steeredTurn = new WeakMap<object, number>()
 
+  /**
+   * 学员关掉问答框的时刻（按任务）。这之前的改动不再自动提醒：工具已经对模型说了
+   * 「这一轮不用再弹」，提醒照发的话，学员刚关掉的框转眼又弹一次。验收单按快照算，照样兜底。
+   */
+  const declinedAt = new Map<string, string>()
+
   function isRootAgent(agent: object): boolean {
     const registry = optional('agents') as { roots?: () => unknown[] } | undefined
     const roots = typeof registry?.roots === 'function' ? registry.roots() : undefined
@@ -382,6 +388,9 @@ export function apply(ctx: Context, config: Config): void {
     const ledger = loadLedger(root)
     const out: Waiting[] = []
     for (const taskId of pendingTaskIds(ledger)) {
+      const edits = ledger.edits.filter((e) => e.taskId === taskId)
+      const declined = declinedAt.get(taskId)
+      if (declined !== undefined && edits.every((e) => e.at <= declined)) continue
       const at = new Date()
       const { hasSnapshot, files, changes } = currentChanges(root, taskId)
       const open = quizzableChanges(changes)
@@ -389,7 +398,7 @@ export function apply(ctx: Context, config: Config): void {
         advanceTask(root, taskId, files, at)
         continue
       }
-      const agentFiles = new Set(ledger.edits.filter((e) => e.taskId === taskId).map((e) => e.file))
+      const agentFiles = new Set(edits.map((e) => e.file))
       out.push({ taskId, changes: open, agentFiles })
     }
     return out
@@ -782,6 +791,7 @@ export function apply(ctx: Context, config: Config): void {
             signal: exec.signal,
           })
         } catch (error) {
+          declinedAt.set(taskId, cutoff.toISOString())
           throw new Error(
             `学员没有作答（${error instanceof Error ? error.message : String(error)}）。` +
               '改动仍记为待答，验收时会再问；这一轮不用再弹。',

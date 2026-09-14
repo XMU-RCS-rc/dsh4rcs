@@ -242,6 +242,16 @@ describe.skipIf(!hasBundle)('rcs_kb_sync 的失败路径', () => {
 })
 
 describe.skipIf(!hasBundle)('呈现钩子不得抛异常', () => {
+  it('渲染旧形状、缺字段的返回值不抛 —— 回放修之前的会话时会遇到', () => {
+    const render = (name: string, value: unknown): unknown =>
+      (tool(name) as unknown as { output: { render(a: unknown, v: unknown): unknown } }).output.render({}, value)
+    // 修之前 rcs_kb_sync 回传的是整份 manifest，没有顶层的 sources / skippedByType
+    const old = { manifest: { sources: [{ label: 'A02 电控组(通用)', token: 'x' }], skippedByType: { file: 1 } }, stats: { added: 1 } }
+    expect(JSON.stringify(render('rcs_kb_sync', old))).toContain('A02 电控组(通用)')
+    expect(() => render('rcs_kb_sync', {})).not.toThrow()
+    expect(() => render('rcs_kb_status', { ok: true })).not.toThrow()
+  })
+
   it('presentCall 在配置缺失时也要能返回', () => {
     for (const t of tools) {
       expect(() => t.presentCall?.({ query: 'x' })).not.toThrow()

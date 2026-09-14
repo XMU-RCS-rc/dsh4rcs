@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { searchKb, kbStatus, snippetsAround, readDocText } from '../src/kb-index.ts'
+import { searchKb, kbStatus, snippetsAround, snippetsForTerms, queryTerms, readDocText } from '../src/kb-index.ts'
 import type { KbManifest } from '../src/kb-sync.ts'
 import { DEFAULT_SYNC_POLICY } from '../src/kb-sync.ts'
 
@@ -139,6 +139,41 @@ describe('searchKb', () => {
     )
     expect(searchKb(dir, '急停', 5).length).toBe(5)
   })
+
+  it('空格分开的多个关键词各自匹配 —— 模型检索时习惯这么写', () => {
+    // 实测踩到：整串「Keil 下载 安装」当一个词找，原文里当然没有这一串，
+    // 结果全靠二元组兜底、一段片段都没有，模型据此断定正文没进镜像。
+    seed([
+      {
+        token: 'd1', name: '安装说明', path: '常用软件/MDK-ARM/keil新版',
+        text: `${'前'.repeat(80)}先装 Keil MDK，再按步骤安装芯片包。`,
+      },
+      { token: 'd2', name: '无关', path: 'p', text: '与这次检索无关的内容' },
+    ])
+    const hits = searchKb(dir, 'Keil 下载 安装')
+    expect(hits.map((h) => h.doc.token)).toEqual(['d1'])
+    expect(hits[0]?.terms).toEqual(['Keil', '安装'])
+    expect(hits[0]?.snippets.join(' ')).toContain('Keil')
+  })
+
+  it('命中的关键词多的排前面', () => {
+    seed([
+      { token: 'd1', name: 'a', path: 'p', text: '只提到 Keil' },
+      { token: 'd2', name: 'b', path: 'p', text: 'Keil 的安装步骤' },
+    ])
+    expect(searchKb(dir, 'Keil 安装').map((h) => h.doc.token)).toEqual(['d2', 'd1'])
+  })
+
+  it('中文模糊要对上大部分二元组 —— 只共有一个「计算」不算命中', () => {
+    // 实测踩到：「量子计算」只靠一个「计算」，就把 8 条检索结果全占满了，都是毫不相干、没有片段的文档
+    seed([{ token: 'd1', name: '硬件入门', path: 'p', text: '这里要计算一下分压电阻' }])
+    expect(searchKb(dir, '量子计算')).toEqual([])
+  })
+
+  it('「急停回路」不会靠一个「回路」命中', () => {
+    seed([{ token: 'd1', name: 'CAN总线入门', path: 'p', text: '终端电阻构成回路' }])
+    expect(searchKb(dir, '急停回路')).toEqual([])
+  })
 })
 
 describe('kbStatus', () => {
@@ -202,6 +237,40 @@ describe('snippetsAround', () => {
 
   it('空 needle 返回空而不是死循环', () => {
     expect(snippetsAround('abc', '')).toEqual([])
+  })
+})
+
+describe('queryTerms', () => {
+  it('按空白与中文标点切开，拉丁文按大小写无关去重', () => {
+    expect(queryTerms(' Keil  下载，安装、keil ')).toEqual(['Keil', '下载', '安装'])
+  })
+
+  it('不做中文分词 —— 连着写的中文仍是一个词', () => {
+    expect(queryTerms('气动压力')).toEqual(['气动压力'])
+  })
+})
+
+describe('snippetsForTerms', () => {
+  it('每个出现的词先各占一段 —— 不让最早出现的词把片段占满', () => {
+    const text = `Keil${'。'.repeat(200)}Keil${'。'.repeat(200)}芯片包`
+    const out = snippetsForTerms(
+      text,
+      [{ needle: 'keil', ignoreCase: true }, { needle: '芯片包', ignoreCase: false }],
+      2,
+      20,
+    )
+    expect(out).toHaveLength(2)
+    expect(out[0]).toContain('Keil')
+    expect(out[1]).toContain('芯片包')
+  })
+
+  it('片段窗口互不重叠 —— 挨着出现的两个词只给一段', () => {
+    const text = `${'前'.repeat(100)}Keil 安装${'后'.repeat(100)}`
+    const out = snippetsForTerms(text, [
+      { needle: 'Keil', ignoreCase: false },
+      { needle: '安装', ignoreCase: false },
+    ])
+    expect(out).toHaveLength(1)
   })
 })
 

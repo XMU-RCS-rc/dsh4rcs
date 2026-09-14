@@ -588,8 +588,13 @@ export async function runSupportTests(options: SupportTestOptions): Promise<Test
   const hasCmake = deps.which('cmake') !== undefined
   const hasWsl = deps.which('wsl') !== undefined
 
-  // 库是 Linux 产物时，只能走 WSL
-  if (format === 'elf') {
+  // 库是 Linux 产物时，只能走 WSL。
+  // 培训工作目录没有 lib/：rcs_train_scaffold 生成的 CMakeLists 直接写 WSL 视角的 gtest 路径
+  // （/mnt/<盘>/…），同样只能在 WSL 里构建。不认这一条就会落到下面的「没有 cmake」——
+  // WSL 里明明有 cmake，却叫学员去装 Windows 版。
+  const cmakeText = readBytes(join(testDir, 'CMakeLists.txt'))
+  const wslPaths = cmakeText !== undefined && /\/mnt\/[a-z]\//.test(new TextDecoder().decode(cmakeText))
+  if (format === 'elf' || (format === 'unknown' && wslPaths)) {
     if (!hasWsl) {
       return blocked(
         '仓库里的 libgtest.a 是 Linux ELF 归档（在 WSL/Ubuntu 下编译的），Windows 原生工具链链不了，而本机没有 WSL。\n' +

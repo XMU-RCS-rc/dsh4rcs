@@ -539,6 +539,28 @@ describe.skipIf(!hasBundle)('改动小测 —— 培训模式', () => {
     expect(ledger()).toHaveLength(1)
   })
 
+  it('学员在本轮中途关掉问答框：本轮结束不再提醒，之后有新改动才再提醒', async () => {
+    await agentWrites(TWICE)
+    reply = async () => {
+      throw new Error('ASK_ABORTED')
+    }
+    await expect(
+      quiz([{ kind: 'why', file: 'demo.c', line: lineOf('return v * 2;') }]),
+    ).rejects.toThrow(/这一轮不用再弹/)
+    const agent = fakeAgent()
+    await turnStopping(agent, 1)
+    expect(agent.steered).toHaveLength(0)
+
+    // 验收单照样兜底：它按快照算，不看提醒
+    const r = (await tool('rcs_train_review')!.execute({ taskId: 'demo' }, exec)) as { text: string }
+    expect(r.text).toContain('还没答题的改动')
+
+    await new Promise((done) => setTimeout(done, 5)) // 台账时间戳精确到毫秒，保证新改动晚于关框
+    await agentWrites('\nint demo_thrice(int v)\n{\n    return v * 3;\n}\n')
+    await turnStopping(agent, 2)
+    expect(agent.steered).toHaveLength(1)
+  })
+
   it('验收单兜底：列出没答题的改动，并单独提醒模型先补答', async () => {
     await agentWrites(TWICE)
     const deferred: unknown[] = []

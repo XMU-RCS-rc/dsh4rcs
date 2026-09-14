@@ -468,6 +468,22 @@ describe('runSupportTests', () => {
     })
     expect(r.blocked).toContain('cmake')
   })
+
+  it('培训工作目录：没有 lib/，CMakeLists 写的是 WSL 路径 —— 走 wsl，不叫人去装 Windows 版 cmake', async () => {
+    const cmake = new TextEncoder().encode(
+      'set(GTEST_DIR "/mnt/d/code/RCS_code/template/RCS_Template_F407/RCS/RCS_Support/test/lib")\n',
+    )
+    const run = fakeRunner({ test: { code: 0, stdout: '[       OK ] RB.PutThenGet (0 ms)\n' } })
+    const r = await runSupportTests({
+      testDir: 'D:/code/rcs-training/ring-buffer',
+      run,
+      deps: depsWith(['CMakeLists.txt'], ['wsl']),
+      readFileBytes: (p) => (p.replace(/\\/g, '/').endsWith('CMakeLists.txt') ? cmake : undefined),
+    })
+    expect(r.blocked).toBeUndefined()
+    expect(r.mode).toBe('wsl')
+    expect(run.calls.every((c) => c.command === 'wsl')).toBe(true)
+  })
 })
 
 describe('flashFirmware', () => {

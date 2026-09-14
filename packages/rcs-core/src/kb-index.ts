@@ -10,6 +10,21 @@
  * （「气动系统压力上限」是一个词还是四个？），词级重合度算出来的分数没有意义。
  * 字符二元组对中文稳定得多，也不需要词典。这条在规则 diff 上验证过：
  * 词级 Jaccard 给「0.6MPa→0.5MPa」只打 0.33 分，二元组能正确识别为小改动。
+ *
+ * ## 但查询里的空格要认
+ *
+ * 文档不分词，**查询**要按空白切开：模型检索时习惯写「Keil 下载 安装」这种
+ * 空格分隔的关键词。早先整串当一个词去找，原文里当然没有「Keil 下载 安装」
+ * 这一串，于是只剩二元组兜底、结果全都没有片段 —— 模型据此断定「这几篇
+ * 安装说明只有标题、正文没进镜像」，转头去闯飞书登录页。其实正文就在镜像里，
+ * 单查 `Keil` 每篇都有三段片段。所以现在每个关键词各自匹配，命中的词多的排前面。
+ *
+ * ## 模糊匹配要大部分二元组都对上
+ *
+ * 二元组兜底只对中文关键词启用，而且这个词的二元组要对上三分之二以上才算。
+ * 早先只要分数过门槛：「量子计算」和一篇文档只共有「计算」一个二元组就被
+ * 当成命中返回，「急停回路」靠一个「回路」命中了 CAN 总线入门 —— 都没有片段，
+ * 看着像「相关但没展开」，其实毫不相干。**误报比漏报更伤。**
  */
 import { readFileSync, existsSync } from 'node:fs'
 
@@ -26,6 +41,8 @@ export type KbHit = {
    * 没有片段时尤其重要 —— 不能一律说成「标题命中」。
    */
   matchedIn: ('name' | 'path' | 'text' | 'fuzzy')[]
+  /** 这篇命中了查询里的哪些关键词（原样，按查询里的顺序）。 */
+  terms?: string[]
 }
 
 export type KbStatus = {
@@ -42,6 +59,9 @@ export type KbStatus = {
 
 /** 单篇正文的读取上限。防止某个异常大的文件把检索拖垮。 */
 const MAX_DOC_BYTES = 2 * 1024 * 1024
+
+/** 中文关键词靠二元组兜底时，至少要对上这么大比例的二元组才算命中。 */
+const FUZZY_MIN_COVERAGE = 2 / 3
 
 function bigrams(s: string): Set<string> {
   const t = s.replace(/\s+/g, '')
@@ -88,6 +108,51 @@ export function snippetsAround(
   return out
 }
 
+/**
+ * 多个关键词的片段：先让每个在正文里出现的词各占一段，再按原文顺序补足。
+ *
+ * 只按原文顺序截，片段会被最早出现、出现最密的那个词占满，别的词明明命中了
+ * 却看不到它在哪 —— 读者分不清这篇是真相关还是只沾了一个词。
+ * 窗口互不重叠，与 `snippetsAround` 同一条原则：片段不能互相包含。
+ */
+export function snippetsForTerms(
+  text: string,
+  needles: readonly { needle: string; ignoreCase: boolean }[],
+  max = 3,
+  radius = 60,
+): string[] {
+  const lowered = text.toLowerCase()
+  const occurrences = needles.map(({ needle, ignoreCase }) => {
+    const found: { at: number; len: number }[] = []
+    if (!needle) return found
+    const haystack = ignoreCase ? lowered : text
+    const target = ignoreCase ? needle.toLowerCase() : needle
+    for (let i = haystack.indexOf(target); i >= 0 && found.length < 20; i = haystack.indexOf(target, i + target.length)) {
+      found.push({ at: i, len: target.length })
+    }
+    return found
+  })
+
+  const windows: { start: number; end: number }[] = []
+  const take = ({ at, len }: { at: number; len: number }): void => {
+    if (windows.length >= max) return
+    const start = Math.max(0, at - radius)
+    const end = Math.min(text.length, at + len + radius)
+    if (windows.some((w) => start < w.end && end > w.start)) return
+    windows.push({ start, end })
+  }
+  for (const found of occurrences) if (found[0] !== undefined) take(found[0])
+  for (const o of occurrences.flatMap((found) => found.slice(1)).sort((a, b) => a.at - b.at)) take(o)
+
+  return windows
+    .sort((a, b) => a.start - b.start)
+    .map(({ start, end }) => {
+      const prefix = start > 0 ? '…' : ''
+      const suffix = end < text.length ? '…' : ''
+      return `${prefix}${text.slice(start, end).replace(/\s+/g, ' ').trim()}${suffix}`
+    })
+}
+
 /** 读一篇正文；缺失或超限返回空串（检索不该因为一篇坏文档整体失败）。 */
 export function readDocText(cacheDir: string, token: string): string {
   const p = docPath(cacheDir, token)
@@ -103,15 +168,34 @@ export function readDocText(cacheDir: string, token: string): string {
 
 /** 查询里是否含中日韩文字。决定要不要用二元组兜底。 */
 function hasCjk(s: string): boolean {
-  return /[㐀-鿿豈-﫿]/.test(s)
+  return /[㐀-鿿豈-﫿]/.test(s)
+}
+
+/**
+ * 把查询切成关键词：按空白与常见分隔符（，、；,;）切开，去重（拉丁文按大小写无关去重）。
+ * 不做中文分词 —— 「气动压力」仍是一个词，交给二元组兜底。
+ */
+export function queryTerms(query: string): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const raw of query.split(/[\s,，、;；]+/)) {
+    const term = raw.trim()
+    if (!term) continue
+    const key = hasCjk(term) ? term : term.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(term)
+  }
+  return out
 }
 
 /**
  * 检索本地镜像。
  *
- * 打分：标题精确命中 > 正文精确命中 > 二元组重合度。
+ * 查询先切成关键词（见 `queryTerms`），每个词各自打分：
+ * 标题精确命中 > 正文精确命中 > 目录名命中 > 二元组重合度。
  * 标题权重高是因为队内文档命名相当规范（「RCSLIB代码规范(Ver 2025/1/17)」
- * 这种），名字往往就是最强的相关性信号。
+ * 这种），名字往往就是最强的相关性信号。排序先看命中了几个词，再看分数。
  *
  * ## 二元组只对中文启用
  *
@@ -121,68 +205,95 @@ function hasCjk(s: string): boolean {
  * 于是那篇被当成命中返回 —— 而全文根本没有 FromISR 这个词。
  *
  * 拉丁文本来就有词边界，精确子串匹配就够用，模糊兜底纯属添乱。
- * 所以只在查询含中日韩文字时才启用二元组。
+ * 所以只在关键词含中日韩文字时才启用二元组，且要对上三分之二以上（见文件头）。
  * **误报比漏报更伤** —— 这是本仓库反复付过学费的一条。
  */
 export function searchKb(cacheDir: string, query: string, limit = 8): KbHit[] {
-  const q = query.trim()
-  if (!q) return []
+  const terms = queryTerms(query).map((term) => {
+    const cjk = hasCjk(term)
+    // 拉丁文大小写无关：FromISR / fromISR 该是一回事
+    return { term, cjk, needle: cjk ? term : term.toLowerCase(), grams: cjk ? bigrams(term) : new Set<string>() }
+  })
+  if (terms.length === 0) return []
 
   const manifest = loadManifest(cacheDir)
   if (!manifest) return []
 
-  // 拉丁文查询做大小写无关匹配：FromISR / fromISR 该是一回事
-  const cjk = hasCjk(q)
-  const needle = cjk ? q : q.toLowerCase()
-  const fold = (s: string): string => (cjk ? s : s.toLowerCase())
-  const qGrams = cjk ? bigrams(q) : new Set<string>()
-
-  const hits: KbHit[] = []
+  const hits: (KbHit & { matched: number; exact: number })[] = []
 
   for (const doc of Object.values(manifest.docs)) {
     if (doc.error) continue
 
     const text = readDocText(cacheDir, doc.token)
+    const folded = { name: doc.name.toLowerCase(), path: doc.path.toLowerCase(), text: text.toLowerCase() }
+    let nameGrams: Set<string> | undefined
+    let textGrams: Set<string> | undefined
     let score = 0
-    const matchedIn: KbHit['matchedIn'] = []
+    let exact = 0
+    const matchedIn = new Set<KbHit['matchedIn'][number]>()
+    const matchedTerms: string[] = []
+    const inText: { needle: string; ignoreCase: boolean }[] = []
 
-    if (fold(doc.name).includes(needle)) {
-      score += 200
-      matchedIn.push('name')
-    }
-    if (fold(doc.path).includes(needle)) {
-      score += 40
-      matchedIn.push('path')
-    }
-    if (fold(text).includes(needle)) {
-      score += 100
-      matchedIn.push('text')
-    }
-
-    if (qGrams.size > 0) {
-      const nameGrams = bigrams(doc.name)
-      let nameOverlap = 0
-      for (const g of qGrams) if (nameGrams.has(g)) nameOverlap++
-      let fuzzy = (nameOverlap / qGrams.size) * 60
-
-      if (text) {
-        const textGrams = bigrams(text)
-        let overlap = 0
-        for (const g of qGrams) if (textGrams.has(g)) overlap++
-        fuzzy += (overlap / qGrams.size) * 40
+    for (const t of terms) {
+      const name = t.cjk ? doc.name : folded.name
+      const path = t.cjk ? doc.path : folded.path
+      const body = t.cjk ? text : folded.text
+      let hit = false
+      if (name.includes(t.needle)) {
+        score += 200
+        matchedIn.add('name')
+        hit = true
       }
-      if (fuzzy > 0) {
-        score += fuzzy
-        if (matchedIn.length === 0) matchedIn.push('fuzzy')
+      if (path.includes(t.needle)) {
+        score += 40
+        matchedIn.add('path')
+        hit = true
       }
+      if (body.includes(t.needle)) {
+        score += 100
+        matchedIn.add('text')
+        inText.push({ needle: t.term, ignoreCase: !t.cjk })
+        hit = true
+      }
+      if (hit) {
+        exact++
+        matchedTerms.push(t.term)
+        continue
+      }
+
+      // 只有三个字以上的中文词才兜底：两个字的词只有一个二元组，对上就是原词
+      if (t.grams.size < 2) continue
+      nameGrams ??= bigrams(doc.name)
+      textGrams ??= bigrams(text)
+      let inName = 0
+      let inAny = 0
+      for (const g of t.grams) {
+        const n = nameGrams.has(g)
+        if (n) inName++
+        if (n || textGrams.has(g)) inAny++
+      }
+      if (inAny / t.grams.size < FUZZY_MIN_COVERAGE) continue
+      score += (inName / t.grams.size) * 60 + (inAny / t.grams.size) * 40
+      matchedIn.add('fuzzy')
+      matchedTerms.push(t.term)
     }
 
-    if (score > 8) {
-      hits.push({ doc, score, snippets: snippetsAround(text, needle, 3, 60, !cjk), matchedIn })
-    }
+    if (matchedTerms.length === 0) continue
+    hits.push({
+      doc,
+      score,
+      snippets: snippetsForTerms(text, inText),
+      matchedIn: [...matchedIn],
+      terms: matchedTerms,
+      matched: matchedTerms.length,
+      exact,
+    })
   }
 
-  return hits.sort((a, b) => b.score - a.score).slice(0, limit)
+  return hits
+    .sort((a, b) => b.matched - a.matched || b.exact - a.exact || b.score - a.score)
+    .slice(0, limit)
+    .map(({ matched: _matched, exact: _exact, ...hit }) => hit)
 }
 
 /** 镜像状态。没同步过、同步不完整都要如实说，别让人以为查不到就是没有。 */

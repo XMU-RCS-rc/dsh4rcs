@@ -200,7 +200,9 @@ export function apply(ctx: Context, config: Config): void {
 
   // 工具注册需要 tools 服务。用 ctx.inject 而不是顶层 inject：
   // 这样即使没有 tools（比如纯 headless 组合），Service 本身依然可用。
-  ctx.inject(['tools'], (scoped) => {
+  // rcs 也必须声明：工具执行时读 scoped.rcs，而 cordis 只让一个 scope 访问它 inject 过的服务，
+  // 漏声明会在真 dsh 里抛 `cannot get property "rcs" without inject`（桩 ctx 测不出来）。
+  ctx.inject(['tools', 'rcs'], (scoped) => {
     scoped.tools.register(
       defineTool({
         name: 'rcs_team_context',

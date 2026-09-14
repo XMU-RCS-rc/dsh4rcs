@@ -26,7 +26,7 @@ import type { ToolCallView, ToolResultView, ToolResult } from '@deepseek-ai/dsh-
 import { HttpFeishuClient, FeishuPermissionError, describeScopes } from '../../rcs-core/src/feishu.ts'
 import { syncKnowledgeBase, DEFAULT_SYNC_POLICY } from '../../rcs-core/src/kb-sync.ts'
 import type { KbSource, SyncPolicy, SyncResult } from '../../rcs-core/src/kb-sync.ts'
-import { searchKb, kbStatus } from '../../rcs-core/src/kb-index.ts'
+import { searchKb, kbStatus, queryTerms } from '../../rcs-core/src/kb-index.ts'
 import type { KbHit, KbStatus } from '../../rcs-core/src/kb-index.ts'
 import { TeamContext } from '../../rcs-core/src/team-context.ts'
 import type { FeishuConfig } from '../../rcs-core/src/team-context.ts'
@@ -60,25 +60,53 @@ function callView(title: string, input: unknown): ToolCallView {
 
 // ---------- 渲染 ----------
 
-function renderSync(r: SyncResult): string {
-  const s = r.stats
+/**
+ * rcs_kb_sync 交给宿主的返回值。**不带 manifest** —— 那是整份镜像目录（几百 KB），
+ * 既不该塞进模型上下文，也不在输出 schema 里：dsh 会以「未声明的字段」判整次调用失败。
+ * 渲染要用的授权范围与按类型跳过数单独拎出来。
+ */
+export type SyncOutput = {
+  stats: SyncResult['stats']
+  failures: SyncResult['failures']
+  sources: SyncResult['manifest']['sources']
+  skippedByType: Record<string, number>
+  permissionHint?: NonNullable<SyncResult['permissionHint']>
+}
+
+export function syncOutput(r: SyncResult): SyncOutput {
+  return {
+    stats: r.stats,
+    failures: r.failures,
+    sources: r.manifest.sources,
+    skippedByType: r.manifest.skippedByType ?? {},
+    ...(r.permissionHint ? { permissionHint: r.permissionHint } : {}),
+  }
+}
+
+/**
+ * 参数收宽松类型：render 拿到的是会话里存着的值，回放旧会话时可能是旧形状
+ * （修之前 rcs_kb_sync 回传的是整份 manifest）。渲染钩子按契约不得抛异常，所以全程给默认值。
+ */
+function renderSync(r: Partial<SyncOutput> & { manifest?: Partial<SyncResult['manifest']> }): string {
+  const s = { added: 0, updated: 0, unchanged: 0, failed: 0, removed: 0, folders: 0, ...(r.stats ?? {}) }
   const head =
     `飞书同步完成 —— 遍历 ${s.folders} 个目录\n` +
     `新增 ${s.added}  更新 ${s.updated}  未变 ${s.unchanged}  失败 ${s.failed}  已删除 ${s.removed}`
 
-  const skipped = Object.entries(r.manifest.skippedByType)
+  const skipped = Object.entries(r.skippedByType ?? r.manifest?.skippedByType ?? {})
   const skipLine =
     skipped.length > 0
       ? `\n按类型跳过：${skipped.map(([k, n]) => `${k}×${n}`).join('  ')}（见 sync.excludeTypes）`
       : ''
 
-  const scope = `\n授权范围：${r.manifest.sources.map((x) => x.label).join('、')}`
+  const scope = `\n授权范围：${(r.sources ?? r.manifest?.sources ?? []).map((x) => x.label).join('、')}`
 
+  const failures = r.failures ?? []
   let fail = ''
-  if (r.failures.length > 0) {
-    const lines = r.failures.slice(0, 10).map((f) => `  · ${f.path} —— ${f.reason.slice(0, 120)}`)
-    const more = r.failures.length > 10 ? `\n  … 另有 ${r.failures.length - 10} 条` : ''
-    fail = `\n\n抓取失败 ${r.failures.length} 条：\n${lines.join('\n')}${more}`
+  if (failures.length > 0) {
+    const lines = failures.slice(0, 10).map((f) => `  · ${f.path} —— ${String(f.reason ?? '').slice(0, 120)}`)
+    const more = failures.length > 10 ? `\n  … 另有 ${failures.length - 10} 条` : ''
+    fail = `\n\n抓取失败 ${failures.length} 条：\n${lines.join('\n')}${more}`
   }
 
   let hint = ''
@@ -109,12 +137,21 @@ function renderSearch(query: string, hits: KbHit[]): string {
     return (
       `本地镜像里没有检索到与「${query}」相关的内容。\n` +
       '注意：查不到可能是**还没同步**或**不在授权范围内**，不代表队里没有这份资料。\n' +
-      '可以先用 rcs_kb_status 看镜像状态。'
+      '可以把检索词拆成空格分开的几个短词再查（连着写的长词要原样出现在原文里才命中），\n' +
+      '或先用 rcs_kb_status 看镜像状态。'
     )
   }
+  const terms = queryTerms(query)
   const body = hits
     .map((h) => {
-      const head = `[${h.doc.path}]`
+      // 多个关键词时写明这篇命中了哪几个、没找到哪几个 —— 只沾一个词的和全都对上的不是一回事
+      const matched = h.terms ?? []
+      const missing = terms.filter((t) => !matched.includes(t))
+      const which =
+        terms.length > 1
+          ? `  命中：${matched.join('、') || '—'}${missing.length > 0 ? `；没找到：${missing.join('、')}` : ''}`
+          : ''
+      const head = `[${h.doc.path}]${which}`
       // 没有片段时要**如实说明命中来源**。早先一律写成「标题命中」，
       // 于是靠模糊匹配捞上来的结果也被说成标题命中 —— 那是在骗读者。
       const snips =
@@ -128,15 +165,16 @@ function renderSearch(query: string, hits: KbHit[]): string {
   return `检索「${query}」，命中 ${hits.length} 篇：\n\n${body}\n\n${DISCLAIMER}`
 }
 
-function renderStatus(s: KbStatus): string {
-  if (!s.ok) return `镜像不可用：${s.reason}`
-  const kb = (s.bytes / 1024).toFixed(1)
-  const skipped = Object.entries(s.skippedByType)
+/** 同 renderSync：收宽松类型、全程给默认值，回放旧会话时不得抛。 */
+function renderStatus(s: Partial<KbStatus>): string {
+  if (!s.ok) return `镜像不可用：${s.reason ?? '原因未知'}`
+  const kb = ((s.bytes ?? 0) / 1024).toFixed(1)
+  const skipped = Object.entries(s.skippedByType ?? {})
   return (
     `本地镜像状态\n` +
-    `最后同步：${s.syncedAt}\n` +
-    `文档 ${s.total} 篇（其中 ${s.failed} 篇抓取失败）  正文合计 ${kb} KB\n` +
-    `授权范围：${s.sources.map((x) => x.label).join('、')}\n` +
+    `最后同步：${s.syncedAt ?? '未知'}\n` +
+    `文档 ${s.total ?? 0} 篇（其中 ${s.failed ?? 0} 篇抓取失败）  正文合计 ${kb} KB\n` +
+    `授权范围：${(s.sources ?? []).map((x) => x.label).join('、')}\n` +
     (skipped.length > 0 ? `按类型跳过：${skipped.map(([k, n]) => `${k}×${n}`).join('  ')}\n` : '') +
     `\n检索走本地镜像，不联网 —— 没网也能查。`
   )
@@ -238,7 +276,11 @@ export function apply(ctx: Context, config: Config): void {
         '完全离线，不联网 —— 没网也照样能用。' +
         '查不到时要注意区分「镜像里没有」和「队里没有」：前者可能只是还没同步。',
       parameters: {
-        query: { type: 'string', required: true, description: '检索关键词，支持中文' },
+        query: {
+          type: 'string',
+          required: true,
+          description: '检索关键词，支持中文。多个关键词用空格分开（如「Keil 安装」），各自匹配、命中多的排前',
+        },
         limit: { type: 'number', description: '返回条数上限，默认 8' },
       },
       output: {
@@ -287,10 +329,16 @@ export function apply(ctx: Context, config: Config): void {
         schema: {
           type: 'object',
           additionalProperties: false,
+          // 字段要和 kbStatus 的返回值一一对应：dsh 会校验返回值，多一个没声明的字段整次调用就判失败
           properties: {
             ok: { type: 'boolean', description: '镜像是否可用' },
+            reason: { type: 'string', description: '镜像不可用时的原因与下一步' },
             total: { type: 'number', description: '文档数' },
             syncedAt: { type: 'string', description: '上次同步时间' },
+            failed: { type: 'number', description: '抓取失败、正文缺失的条目数' },
+            bytes: { type: 'number', description: '正文合计字节数' },
+            sources: { type: 'json', description: '授权范围（同步来源目录）' },
+            skippedByType: { type: 'json', description: '按类型跳过的数量' },
           },
         },
         render: (_args, value) => [{ type: 'text', text: renderStatus(value as unknown as KbStatus) }],
@@ -325,12 +373,16 @@ export function apply(ctx: Context, config: Config): void {
         schema: {
           type: 'object',
           additionalProperties: false,
+          // 返回的是 syncOutput 投影，字段与这里一一对应；整份 manifest 不回传
           properties: {
             stats: { type: 'json', description: '新增/更新/未变/失败计数' },
             failures: { type: 'json', description: '抓取失败的条目' },
+            sources: { type: 'json', description: '授权范围（同步来源目录）' },
+            skippedByType: { type: 'json', description: '按类型跳过的数量' },
+            permissionHint: { type: 'json', description: '权限不足时要开的权限与申请链接' },
           },
         },
-        render: (_args, value) => [{ type: 'text', text: renderSync(value as unknown as SyncResult) }],
+        render: (_args, value) => [{ type: 'text', text: renderSync(value as unknown as SyncOutput) }],
       },
       presentCall: (args) => callView('同步飞书资料', args.force ? '全量' : '增量'),
       async execute(args) {
@@ -354,13 +406,14 @@ export function apply(ctx: Context, config: Config): void {
         )
 
         try {
-          return (await syncKnowledgeBase({
+          const result = await syncKnowledgeBase({
             client,
             sources,
             policy: policyOf(fc),
             cacheDir: cacheDir(),
             force: args.force === true,
-          })) as unknown as never
+          })
+          return syncOutput(result) as unknown as never
         } catch (e) {
           if (e instanceof FeishuPermissionError) {
             throw new Error(
