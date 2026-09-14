@@ -121,6 +121,7 @@ const NOT_EXECUTED: Record<string, string> = {
   rcs_version_status: '要联网（git ls-remote + npm registry）；返回值是插件里按 summary / stale / items / fromCache 逐个写出的',
   rcs_rule_import: '要一份 .docx；返回值 ImportResult 的字段与 schema 一一对应',
   rcs_train_quiz: '只在培训模式、有真实改动时才走到返回；返回值只有 recorded / text 两个字段',
+  rcs_train_hint: '只在学员于问答框里追问之后才走到返回；返回值同样只有 recorded / text 两个字段',
 }
 
 let workspace = ''
@@ -261,7 +262,7 @@ describe.skipIf(!ready)('工具返回值符合输出 schema', () => {
   it('全部工具都有着落：真跑过，或写明了为什么不跑', () => {
     const expected = hasFirmware ? [...registered.keys()] : [...registered.keys()].filter((n) => !isFirmwareTool(n))
     const missing = expected.filter((n) => !covered.has(n) && NOT_EXECUTED[n] === undefined)
-    expect(registered.size).toBe(25)
+    expect(registered.size).toBe(26)
     expect(missing).toEqual([])
   })
 })

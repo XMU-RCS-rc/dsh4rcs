@@ -1,6 +1,6 @@
 # dsh4rcs 功能清单
 
-> 更新：2026-09-14 · 7 个插件 · 25 个工具 · 739 个测试全通过
+> 更新：2026-09-14 · 7 个插件 · 26 个工具 · 757 个测试全通过
 > 使用方法见 [`USAGE.md`](./USAGE.md) · 设计背景见 [`dsh-rcs-plugin-design.md`](./dsh-rcs-plugin-design.md)
 
 ---
@@ -26,7 +26,7 @@ ROBOCON 每年换主题、赛季内还反复改版。整套插件按**多赛季�
 
 ---
 
-## 二、25 个工具
+## 二、26 个工具
 
 ### 规则（`dsh-rcs-rules`，5 个）
 
@@ -80,16 +80,21 @@ ROBOCON 每年换主题、赛季内还反复改版。整套插件按**多赛季�
 |---|---|---|
 | `rcs_team_context` | `robot` | 赛季、主题、规则版本、机器人角色与区域限制、固件技术栈、赛季倒计时 |
 
-### 新生培训（`dsh-rcs-train`，4 个）
+### 新生培训（`dsh-rcs-train`，5 个）
 
 | 工具 | 危险度 | 作用 |
 |---|---|---|
 | `rcs_train_task` | L0 | 取任务：目标、前置知识在队内哪份资料里 |
 | `rcs_train_scaffold` | **L1** | 发基线：仓库里存完整实现，发放时按课程表挖空，**挖空失败拒绝发放** |
 | `rcs_train_quiz` | **L1** | 改动小测：就这次改动出 1–3 道开放题（题目钉在改动过的行上、不带答案），回答原样存进学员工作目录，不判分。只在培训模式下可用 |
+| `rcs_train_hint` | **L1** | 回复改动小测里的追问：新生看不懂题时在问答框最后一栏追问，Agent 回一段提示（≤200 字、不贴代码、不给答案），工具连同空着的题再弹一次；提示原文进记录。只在新生追问后可用 |
 | `rcs_train_review` | L0 | 验收单：测试、规范、改动小测汇总、还没答题的改动。不给总判定 |
 
 改动小测的回答不上验收单（验收单会进对话），培训结束后用 `npm run train:export` / `npm run train:collect` 收集，见 [`USAGE.md`](./USAGE.md#改动小测)。
+
+新生看不懂题可以追问，每轮最多 2 次。追问原文交给 Agent（回答不交），Agent 只能经 `rcs_train_hint` 回提示。
+**「提示里不给答案」机器保证不了** —— 提示是模型写的；工具只拦得住太长、贴代码、整行像代码的回复，
+其余靠提示原文进记录、老队员在报告里核对。
 
 ### 安全层（`dsh-rcs-guard`，无工具，横切生效）
 
@@ -125,7 +130,7 @@ packages/
 | 级别 | 做什么 | 需要 dsh | 状态 |
 |---|---|---|---|
 | L0 typecheck | 对着 `dsh-tools@0.1.5-rc.2` 的 `.d.ts` 检查 | ❌ | ✅ 零错误 |
-| L1 单元测试 | `vitest run` | ❌ | ✅ 739/739 |
+| L1 单元测试 | `vitest run` | ❌ | ✅ 757/757 |
 | L2 CLI 冒烟 | `npm run check -- all <工程>` | ❌ | ✅ |
 | L2.5 插件加载 | 桩 ctx / 真实 cordis 跑 `apply` | ❌ | ✅ |
 | L3 dsh 加载 | `npm run dsh:patch` | ✅ | ✅ |
@@ -144,28 +149,28 @@ L3/L4 在 0.1.5-rc.1 上的复验（临时 `DSH_HOME`，不碰日常 profile）�
 蓝白主题生效，控制台零报错零警告。rc.2 相对 rc.1 只改了 7 个前端包，插件 import 的宿主包一字未改。
 没复验的两项同上。
 
-### 测试分布（739 个）
+### 测试分布（757 个）
 
 | 文件 | 数量 | 重点 |
 |---|---|---|
 | `rcs-core/test/kb-sync` | 34 | 同步、**白名单越界**、只读 scope 推荐，全用假 client |
 | `rcs-core/test/lint-embedded` | 21 | 嵌入式规范，**重点防误报** |
 | `rcs-core/test/rule-source` | 26 | 规则检索 + BR 全自动防误报专项 |
-| `rcs-core/test/danger` | 19 | 危险度分级（涉及人身安全，覆盖最密） |
+| `rcs-core/test/danger` | 20 | 危险度分级（涉及人身安全，覆盖最密） |
 | `rcs-core/test/team-context` | 16 | 队内上下文 |
 | `rcs-ui/test/view-model` | 14 | 投影函数不得抛异常 |
 | `rcs-core/test/real-project` | 11 | 对真实工程，基准是手工核查结论 |
 | `dsh-rcs-rules/test` | 20 | 规则插件端到端 + 结果卡片 + 跨赛季入口 |
 | `dsh-rcs-guard/test` | 10 | **真实 cordis** 跑 waterfall |
 | `rcs-core/test/rules-data` | 9 | **规则提取质量**回归 |
-| `dsh-rcs-core/test` | 39 | **真实 cordis** 跑 Service 注册与工具执行（服务没声明进 inject，桩 ctx 测不出，这里会炸）；**全部 25 个工具的返回值逐个拿输出 schema 校验** |
+| `dsh-rcs-core/test` | 39 | **真实 cordis** 跑 Service 注册与工具执行（服务没声明进 inject，桩 ctx 测不出，这里会炸）；**全部 26 个工具的返回值逐个拿输出 schema 校验** |
 | `dsh-rcs-control/test` | 7 | 桩 ctx 跑 apply |
 | `rcs-core/test/kb-index` | 30 | 离线检索：坏数据不得抛、片段不得互相包含、**拉丁文查询不得误报**、多个关键词各自匹配、中文模糊要对上大部分二元组 |
 | `rcs-core/test/kb-real` | 4 | 对真实镜像（没有镜像的机器上跳过）：「Keil 下载 安装」带片段、「量子计算」零命中 |
 | `dsh-rcs-kb/test` | 16 | 知识库插件端到端 + 结果卡片 |
 | `rcs-core/test/rule-diff` | 4 | diff 纯逻辑 |
-| `rcs-core/test/training-quiz` | 41 | 改动小测：改动行号、只改注释不出题、**题目必须钉在改动上**、回答原样进报告、报告不打分 |
-| `dsh-rcs-train/test` | 44 | 培训插件端到端 + 改动小测整条链；guard → core → train 的模式传递用**真实 cordis** |
+| `rcs-core/test/training-quiz` | 51 | 改动小测：改动行号、只改注释不出题、**题目必须钉在改动上**、回答原样进报告、报告不打分；追问：提示拒收代码、重问改不动已答的题、报告列出提示原文 |
+| `dsh-rcs-train/test` | 51 | 培训插件端到端 + 改动小测整条链（含追问 → 提示 → 只重问空着的题）；guard → core → train 的模式传递用**真实 cordis** |
 | `rcs-core/test/training-records` + `training-scripts` | 17 | 记录落盘；`train:export` → `train:collect` 真起进程走一遍 |
 
 ---
@@ -268,8 +273,8 @@ L3/L4 在 0.1.5-rc.1 上的复验（临时 `DSH_HOME`，不碰日常 profile）�
 | 整页蓝白主题 / 品牌入口 | ✅ 主题 token 覆盖 + 侧栏队徽，随整套插件启停 |
 | UI 工程看板 | ⏸ 等 Node 侧快照/订阅数据源 |
 | 赛场清单 | ⏸ 等队里给实际内容 |
-| **新生培训** | ✅ guard 培训模式 + 课程表 + 四个工具（领任务/发基线/改动小测/出验收单），首批 5 个任务挂在 F103 模板上。培训用 `dsh:start:training`（安全层固定 training、开改动小测），比赛用 `dsh:start:competition`（关培训工具、固定 dev） |
-| 改动小测 | ✅ 只记录不判分：题目钉在改动过的行上、不带答案；回答存学员本机，`train:export` / `train:collect` 收集。插件链路有真实 cordis 测试，**还没经真实模型、真实新生跑过** |
+| **新生培训** | ✅ guard 培训模式 + 课程表 + 五个工具（领任务/发基线/改动小测/回复追问/出验收单），首批 5 个任务挂在 F103 模板上。培训用 `dsh:start:training`（安全层固定 training、开改动小测），比赛用 `dsh:start:competition`（关培训工具、固定 dev） |
+| 改动小测 | ✅ 只记录不判分：题目钉在改动过的行上、不带答案；看不懂题可以追问（每轮 2 次），Agent 的提示原文进记录；回答存学员本机，`train:export` / `train:collect` 收集。插件链路有真实 cordis 测试，**还没经真实模型、真实新生跑过** |
 | 变异题引擎 / G2 水印 | ⏸ 二期，等一期跑过一轮真实新生 |
 | 飞书共享范围 | ⏸ 队里处理：收紧根目录可见性、把凭证类文档移出 |
 

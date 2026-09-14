@@ -1,6 +1,6 @@
 # dsh4rcs 工作区说明
 
-厦门大学 RCS 机器人队的 dsh 插件套件。7 个插件、25 个工具，服务 ROBOCON 2027「女娲补天」赛季的电控方向。
+厦门大学 RCS 机器人队的 dsh 插件套件。7 个插件、26 个工具，服务 ROBOCON 2027「女娲补天」赛季的电控方向。
 
 ## 先用工具，别凭记忆
 
@@ -22,7 +22,7 @@
 ## 危险分级（涉及人身安全）
 
 - **L0 只读** —— 放行
-- **L1 本机写**（`rcs_fw_build`、`rcs_support_test`、`rcs_kb_sync`、`rcs_train_scaffold`、`rcs_train_quiz`）—— 放行。这一级目前**不改变任何判定**，是「哪些工具会出网或落盘」的台账
+- **L1 本机写**（`rcs_fw_build`、`rcs_support_test`、`rcs_kb_sync`、`rcs_train_scaffold`、`rcs_train_quiz`、`rcs_train_hint`）—— 放行。这一级目前**不改变任何判定**，是「哪些工具会出网或落盘」的台账
 - **L2 物理动作**（`rcs_fw_flash`、电机使能、气路动作、总线下发）—— **需人工确认**，两种模式都一样
 - **LG 代码生成**（`rcs_train_generate`）—— 培训模式需过闸门，开发模式放行
 

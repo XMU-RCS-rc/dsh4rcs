@@ -218,6 +218,7 @@ function renderQuiz(q: QuizSummary): string[] {
   L.push(
     `改动小测：答了 ${q.rounds} 轮 / ${q.questions} 题` +
       (q.blank > 0 ? `（${q.blank} 题空着）` : '') +
+      (q.followUps > 0 ? `，学员追问 ${q.followUps} 次` : '') +
       (q.enabled ? '' : '；这次不是用培训模式启动的，不会再出新题'),
   )
   L.push(

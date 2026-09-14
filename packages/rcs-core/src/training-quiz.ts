@@ -18,6 +18,13 @@
  *    回答不回传进对话。
  * 3. **记录是给老队员挑追问方向用的，不是考试。** 学员让 Agent 替他答，拦不住；
  *    当面提问才是真正的检验 —— 与 rcs_train_review 不判定「学会了」是同一条原则。
+ *
+ * ## 追问
+ *
+ * 问答框最后有一栏可选的追问：看不懂哪道题，就把那道空着、写下想问的。追问原文交给模型，
+ * 模型只能经 rcs_train_hint 回一段提示，工具把提示连同空着的题再弹一次；每轮最多追问
+ * MAX_FOLLOW_UPS 次。「提示里不给答案」机器保证不了 —— 提示是模型写的。能做的只有：
+ * 限次数、限长度、拒收像代码的回复、把提示原文存进记录给老队员核对。
  */
 import { isAbsolute, relative } from 'node:path'
 
@@ -33,9 +40,24 @@ export const MAX_QUESTIONS = 3
 export const QUIZ_NOTICE =
   '回答会原样存在你的培训目录里，培训结束后导出交给老队员看；这里不评分，写你自己的理解就好。'
 
+/** 一轮小测里学员最多追问几次。追问是为了看懂题，不能变成一问一答把答案套出来。 */
+export const MAX_FOLLOW_UPS = 2
+
+/** Agent 回复追问的字数上限。说清题意用不了这么多，写长了多半是在讲答案。 */
+export const MAX_HINT_CHARS = 200
+
+/** 问答框里追问栏的 id。题目的 id 是 q1、q2……，撞不上。 */
+export const FOLLOW_UP_ID = 'follow-up'
+
+/** 追问栏里给学员看的说明。 */
+export const FOLLOW_UP_NOTICE =
+  'Agent 只帮你弄清题意、指出该看哪，不会给答案；回复之后，空着的题会再问你一次。' +
+  '追问会交给 Agent 看（回答不会），追问和回复也会存下来给老队员看。'
+
 /** 领任务、发基线时给学员的说明。 */
 export const QUIZ_INTRO =
   `培训模式下有「改动小测」：Agent 改了你的代码后，会就这次改动问你 1–${MAX_QUESTIONS} 个问题。` +
+  `看不懂题可以先追问（每轮最多 ${MAX_FOLLOW_UPS} 次），Agent 只帮你弄清题意，不给答案。` +
   QUIZ_NOTICE
 
 /* ---------- 哪些文件算数 ---------- */
@@ -585,25 +607,150 @@ export function buildQuestions(
 
 /* ---------- 回答与记录 ---------- */
 
-export type QuizAnswer = { id: string; text: string }
+export type QuizAnswer = {
+  id: string
+  text: string
+  /** 作答前看过几条 Agent 对追问的提示。没看过就没有这个字段 —— 老队员据此知道哪些回答是看了提示才写的。 */
+  hintsSeen?: number
+}
+
+/** 问答框回复里的各项。形状不对就当什么都没答。 */
+function replyItems(reply: unknown): unknown[] {
+  const raw = (reply as { answers?: unknown } | null)?.answers
+  return Array.isArray(raw) ? raw : []
+}
+
+/** 某一项的原文：自由文本优先，没有就用选中的标签。 */
+function replyText(items: readonly unknown[], id: string): string {
+  const hit = items.find((a) => (a as { id?: unknown } | null)?.id === id) as
+    | { selected?: unknown; custom?: unknown }
+    | undefined
+  const custom = typeof hit?.custom === 'string' ? hit.custom : ''
+  const selected = Array.isArray(hit?.selected)
+    ? hit.selected.filter((s): s is string => typeof s === 'string')
+    : []
+  return custom !== '' ? custom : selected.join('、')
+}
 
 /**
  * dsh 问答框的回答 → 按题目顺序的原文。
  * 没答的题记空串，不替学员补任何东西；也不做任何清洗 —— 原文就是记录的全部价值。
  */
 export function answersFrom(questions: readonly QuizQuestion[], reply: unknown): QuizAnswer[] {
-  const raw = (reply as { answers?: unknown } | null)?.answers
-  const items = Array.isArray(raw) ? raw : []
-  return questions.map((q) => {
-    const hit = items.find((a) => (a as { id?: unknown } | null)?.id === q.id) as
-      | { selected?: unknown; custom?: unknown }
-      | undefined
-    const custom = typeof hit?.custom === 'string' ? hit.custom : ''
-    const selected = Array.isArray(hit?.selected)
-      ? hit.selected.filter((s): s is string => typeof s === 'string')
-      : []
-    return { id: q.id, text: custom !== '' ? custom : selected.join('、') }
+  const items = replyItems(reply)
+  return questions.map((q) => ({ id: q.id, text: replyText(items, q.id) }))
+}
+
+/** 还空着的题。只写了空白也算空着。 */
+export function openQuestions(
+  questions: readonly QuizQuestion[],
+  answers: readonly QuizAnswer[],
+): QuizQuestion[] {
+  return questions.filter((q) => (answers.find((a) => a.id === q.id)?.text ?? '').trim() === '')
+}
+
+/* ---------- 追问 ---------- */
+
+/** 一次追问：学员问了什么、Agent 回了什么。 */
+export type FollowUp = {
+  /** 学员的追问原文。 */
+  ask: string
+  /** Agent 的提示原文。空串是没回复：题都答完了、学员关了框，或者 dsh 重启了。 */
+  hint: string
+  /** 学员追问时还空着的题。 */
+  open: string[]
+  at: string
+}
+
+/** 回复里追问栏的原文；没写是空串。与回答一样不清洗，算不算「追问了」由调用方去掉空白后判断。 */
+export function followUpFrom(reply: unknown): string {
+  return replyText(replyItems(reply), FOLLOW_UP_ID)
+}
+
+/** 这一轮还能追问几次。 */
+export function followUpsLeft(followUps: readonly FollowUp[] | undefined): number {
+  return Math.max(0, MAX_FOLLOW_UPS - (followUps?.length ?? 0))
+}
+
+/** 已经给学员看过的提示条数（没回复的追问不算）。 */
+export function hintsShown(followUps: readonly FollowUp[] | undefined): number {
+  return (followUps ?? []).filter((f) => f.hint !== '').length
+}
+
+/**
+ * 重问之后合并回答：答过的一个字不动，只补空着的；补上的标上作答前看过几条提示。
+ * 重问只弹空着的题，这里仍按「空着」过滤一次 —— 回复里夹带已答题的 id 也改不动原答案。
+ */
+export function mergeAnswers(
+  prev: readonly QuizAnswer[],
+  next: readonly QuizAnswer[],
+  hintsSeen: number,
+): QuizAnswer[] {
+  return prev.map((a) => {
+    if (a.text.trim() !== '') return a
+    const n = next.find((x) => x.id === a.id)
+    if (n === undefined || n.text.trim() === '') return a
+    return { id: a.id, text: n.text, ...(hintsSeen > 0 ? { hintsSeen } : {}) }
   })
+}
+
+/**
+ * 检查模型对追问的回复。只拦得住明显的：空的、太长、贴代码块、整行像代码。
+ * 「有没有把答案说出来」机器判断不了 —— 真正的保障是提示原文进记录，老队员看得到。
+ */
+export function checkHint(raw: string): Checked<{ hint: string }> | Problems {
+  const hint = raw.trim()
+  if (hint === '') return { ok: false, problems: ['提示是空的'] }
+  const problems: string[] = []
+  if (hint.length > MAX_HINT_CHARS) {
+    problems.push(
+      `提示有 ${hint.length} 字，超过 ${MAX_HINT_CHARS} 字 —— 说清题意用不了这么多，写长了多半是在讲答案`,
+    )
+  }
+  if (hint.includes('```')) problems.push('提示里不能贴代码块')
+  const codeLine = hint
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((l) => /[;{}]$/.test(l) || /^#\s*(include|define)\b/.test(l))
+  if (codeLine !== undefined) {
+    problems.push(`提示里有像代码的一行（${clip(codeLine, 40)}）—— 改写后的代码就是答案`)
+  }
+  return problems.length > 0 ? { ok: false, problems } : { ok: true, hint }
+}
+
+/** 问答框里的一项 —— dsh userQuestions 提问项里本插件用到的字段。不给 options，就是自由作答。 */
+export type AskItem = { id: string; header: string; question: string; detail: string }
+
+/**
+ * 这一次要弹的问答框：`ask` 是要问的题（第一次是全部，之后只剩空着的），
+ * 还能追问就在最后加一栏追问。追问不绑定哪道题，所以之前的追问与提示附在每道重问的题下面。
+ */
+export function quizItems(
+  questions: readonly QuizQuestion[],
+  ask: readonly QuizQuestion[],
+  followUps: readonly FollowUp[],
+): AskItem[] {
+  const thread = followUps
+    .filter((f) => f.hint !== '')
+    .map((f) => `你的追问：${f.ask.trim()}\n\nAgent 的提示：${f.hint}`)
+  const items: AskItem[] = ask.map((q) => ({
+    id: q.id,
+    header:
+      `改动小测 ${questions.findIndex((x) => x.id === q.id) + 1}/${questions.length}` +
+      (thread.length > 0 ? ' · 再问一次' : ''),
+    question: q.text,
+    detail: [q.context, ...thread, QUIZ_NOTICE].join('\n\n'),
+  }))
+  const left = followUpsLeft(followUps)
+  if (left > 0) {
+    items.push({
+      id: FOLLOW_UP_ID,
+      header: '追问（可选）',
+      question: '有看不懂的题吗？先把那道空着，在这里写下你想问的',
+      detail: `${FOLLOW_UP_NOTICE}这一轮还能追问 ${left} 次。`,
+    })
+  }
+  return items
 }
 
 /** 一轮小测的完整记录。 */
@@ -619,6 +766,11 @@ export type QuizRecord = {
   diff: string
   questions: QuizQuestion[]
   answers: QuizAnswer[]
+  /**
+   * 学员的追问与 Agent 的提示，按先后。没追问过就没有这个字段。
+   * 追问之后再答，改的是同一份记录（文件名按 at 取，at 不变）。
+   */
+  followUps?: FollowUp[]
 }
 
 /** 记录文件名：时间戳，冒号和点换成横线（Windows 文件名不能有冒号）。 */
@@ -654,7 +806,23 @@ function isQuestion(value: unknown): value is QuizQuestion {
 function isAnswer(value: unknown): value is QuizAnswer {
   if (typeof value !== 'object' || value === null) return false
   const a = value as Partial<QuizAnswer>
-  return typeof a.id === 'string' && typeof a.text === 'string'
+  return (
+    typeof a.id === 'string' &&
+    typeof a.text === 'string' &&
+    (a.hintsSeen === undefined || typeof a.hintsSeen === 'number')
+  )
+}
+
+function isFollowUp(value: unknown): value is FollowUp {
+  if (typeof value !== 'object' || value === null) return false
+  const f = value as Partial<FollowUp>
+  return (
+    typeof f.ask === 'string' &&
+    typeof f.hint === 'string' &&
+    Array.isArray(f.open) &&
+    f.open.every((id) => typeof id === 'string') &&
+    typeof f.at === 'string'
+  )
 }
 
 /** 记录可能被手改过、或者是别的版本写的。缺了核心字段就整条不认，而不是拼出一条半真的记录。 */
@@ -670,6 +838,7 @@ export function parseRecord(raw: unknown): QuizRecord | undefined {
   ) {
     return undefined
   }
+  const followUps = Array.isArray(r.followUps) ? r.followUps.filter(isFollowUp) : []
   return {
     version: 1,
     taskId: r.taskId,
@@ -680,12 +849,16 @@ export function parseRecord(raw: unknown): QuizRecord | undefined {
     diff: typeof r.diff === 'string' ? r.diff : '',
     questions: r.questions.filter(isQuestion),
     answers: r.answers.filter(isAnswer),
+    ...(followUps.length > 0 ? { followUps } : {}),
   }
 }
 
 function blankAnswers(r: QuizRecord): number {
-  return r.questions.filter((q) => (r.answers.find((a) => a.id === q.id)?.text ?? '').trim() === '')
-    .length
+  return openQuestions(r.questions, r.answers).length
+}
+
+function followUpCount(records: readonly QuizRecord[]): number {
+  return records.reduce((n, r) => n + (r.followUps?.length ?? 0), 0)
 }
 
 /* ---------- 验收单用的汇总 ---------- */
@@ -697,6 +870,8 @@ export type QuizSummary = {
   questions: number
   /** 空着没答的题数。 */
   blank: number
+  /** 学员追问的次数。 */
+  followUps: number
   /** 观测到的 Agent 改动次数：已答题轮次里的，加上还在台账上的。 */
   agentEdits: number
   agentFiles: string[]
@@ -716,6 +891,7 @@ export function summarizeQuiz(
     rounds: records.length,
     questions: records.reduce((n, r) => n + r.questions.length, 0),
     blank: records.reduce((n, r) => n + blankAnswers(r), 0),
+    followUps: followUpCount(records),
     agentEdits: edits.length,
     agentFiles: [...new Set(edits.map((e) => e.file))].sort(),
     pending: quizzableChanges(pending).map(changeStat),
@@ -806,6 +982,8 @@ export type BundleStats = {
   rounds: number
   questions: number
   blank: number
+  /** 学员追问的次数。 */
+  followUps: number
   agentEdits: number
   /** 导出时还没答题的改动文件数。 */
   pendingFiles: number
@@ -823,6 +1001,7 @@ export function bundleStats(b: RecordBundle): BundleStats {
     rounds: b.records.length,
     questions: b.records.reduce((n, r) => n + r.questions.length, 0),
     blank: b.records.reduce((n, r) => n + blankAnswers(r), 0),
+    followUps: followUpCount(b.records),
     agentEdits,
     pendingFiles,
   }
@@ -841,12 +1020,40 @@ export function exportFileName(student: string, now: Date): string {
 /** 代码块用四个反引号：学员的代码里可能就有三个。 */
 const FENCE = '````'
 
-function quoteAnswer(text: string): string {
-  const body = text.trim() === '' ? '（空着没答）' : text.trimEnd()
+/** 逐行引用原文；空的写 `empty`。 */
+function quote(text: string, empty: string): string {
+  const body = text.trim() === '' ? empty : text.trimEnd()
   return body
     .split(/\r?\n/)
     .map((l) => `> ${l}`)
     .join('\n')
+}
+
+function quoteAnswer(text: string): string {
+  return quote(text, '（空着没答）')
+}
+
+/** 一轮里的追问与提示。提示是模型写的原文 —— 老队员要看的就是它有没有把答案漏给学员。 */
+function renderFollowUps(r: QuizRecord): string[] {
+  const followUps = r.followUps ?? []
+  if (followUps.length === 0) return []
+  const L = ['**追问与提示**（提示是 Agent 写的原文，看看有没有把答案漏给学员）', '']
+  followUps.forEach((f, i) => {
+    const open = f.open
+      .map((id) => r.questions.findIndex((q) => q.id === id) + 1)
+      .filter((n) => n > 0)
+    L.push(
+      `学员追问 ${i + 1}${open.length > 0 ? `（当时空着第 ${open.join('、')} 题）` : '（当时题都答完了）'}：`,
+      '',
+      quote(f.ask, '（空）'),
+      '',
+      'Agent 的提示：',
+      '',
+      quote(f.hint, '（没回复）'),
+      '',
+    )
+  })
+  return L
 }
 
 function describeEdits(edits: readonly AgentEdit[]): string {
@@ -867,7 +1074,8 @@ export function renderTraineeReport(b: RecordBundle): string {
   L.push(`# ${b.student} 的培训记录`, '')
   L.push(
     `导出时间：${b.exportedAt} · 改动小测 ${s.rounds} 轮 / ${s.questions} 题` +
-      `${s.blank > 0 ? `（${s.blank} 题空着）` : ''} · 观测到 Agent 改代码 ${s.agentEdits} 次`,
+      `${s.blank > 0 ? `（${s.blank} 题空着）` : ''}` +
+      `${s.followUps > 0 ? ` · 追问 ${s.followUps} 次` : ''} · 观测到 Agent 改代码 ${s.agentEdits} 次`,
     '',
   )
   L.push(...REPORT_DISCLAIMER)
@@ -903,7 +1111,10 @@ export function renderTraineeReport(b: RecordBundle): string {
         const answer = r.answers.find((a) => a.id === q.id)
         L.push(`**${i + 1}. ${q.text}**`, '', `${FENCE}c`, q.context, FENCE, '')
         L.push(quoteAnswer(answer?.text ?? ''), '')
+        const seen = answer?.hintsSeen ?? 0
+        if (seen > 0) L.push(`（看过 ${seen} 条 Agent 提示后作答）`, '')
       })
+      L.push(...renderFollowUps(r))
     }
     const p = b.pending.find((x) => x.taskId === taskId)
     if (p !== undefined && (p.changes.length > 0 || p.agentEdits.length > 0)) {
@@ -930,13 +1141,13 @@ export function renderCollectIndex(rows: readonly CollectRow[]): string {
     '',
     `共 ${rows.length} 份。数字只说明「问过什么、答没答」，**不代表掌握程度** —— 以当面提问为准。`,
     '',
-    '| 学员 | 导出时间 | 答题轮数 | 题数 | 空着 | Agent 改代码 | 未答题的改动 | 报告 |',
-    '|---|---|---|---|---|---|---|---|',
+    '| 学员 | 导出时间 | 答题轮数 | 题数 | 空着 | 追问 | Agent 改代码 | 未答题的改动 | 报告 |',
+    '|---|---|---|---|---|---|---|---|---|',
   ]
   for (const r of rows) {
     L.push(
       `| ${cell(r.student)} | ${r.exportedAt.slice(0, 16).replace('T', ' ')} | ${r.rounds} | ` +
-        `${r.questions} | ${r.blank} | ${r.agentEdits} | ${r.pendingFiles} | ` +
+        `${r.questions} | ${r.blank} | ${r.followUps} | ${r.agentEdits} | ${r.pendingFiles} | ` +
         `[${cell(r.report)}](./${encodeURI(r.report)}) |`,
     )
   }

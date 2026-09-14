@@ -88,7 +88,8 @@ function main(args) {
   note(`工作目录：${ws.root}（来源：${ws.from}）`)
   note(`学员：${bundle.student}`)
   note(
-    `改动小测 ${s.rounds} 轮 / ${s.questions} 题${s.blank > 0 ? `（${s.blank} 题空着）` : ''}；` +
+    `改动小测 ${s.rounds} 轮 / ${s.questions} 题${s.blank > 0 ? `（${s.blank} 题空着）` : ''}` +
+      `${s.followUps > 0 ? `，追问 ${s.followUps} 次` : ''}；` +
       `导出时还有 ${s.pendingFiles} 个文件的改动没答题`,
   )
   if (s.rounds === 0) {
@@ -97,7 +98,7 @@ function main(args) {
   }
   note('')
   note(`已导出：${file}`)
-  note('把这个文件交给老队员。里面只有改动小测的题目、你的回答和对应的代码改动。')
+  note('把这个文件交给老队员。里面只有改动小测的题目、你的回答、追问与 Agent 的提示，以及对应的代码改动。')
   return 0
 }
 

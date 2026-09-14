@@ -233,7 +233,14 @@ function ledger(): { file: string; tool: string }[] {
   return (JSON.parse(readFileSync(path, 'utf8')) as { edits: { file: string; tool: string }[] }).edits
 }
 
-function records(): { answers: unknown; agentEdits: { file: string }[]; student: string }[] {
+type SavedRecord = {
+  answers: unknown
+  agentEdits: { file: string }[]
+  student: string
+  followUps?: { ask: string; hint: string; open: string[]; at: string }[]
+}
+
+function records(): SavedRecord[] {
   const dir = join(wsRoot, '.records', 'demo')
   if (!existsSync(dir)) return []
   return readdirSync(dir)
@@ -249,9 +256,35 @@ function fakeAgent(): { steered: unknown[]; steer(message: unknown): void } {
 const quiz = (questions: unknown): Promise<unknown> =>
   tool('rcs_train_quiz')!.execute({ taskId: 'demo', questions }, exec)
 
+const hint = (args: object): Promise<unknown> =>
+  tool('rcs_train_hint')!.execute({ taskId: 'demo', ...args }, exec)
+
+type AskItem = { id: string; header: string; question: string; detail: string }
+
+/** 第 i 次弹出的问答框里的各项。 */
+const items = (i: number): AskItem[] => (asked[i] as { questions: AskItem[] }).questions
+
+/** 两道题：q1 钉在 return 那行，q2 钉在函数头。 */
+const twoQuestions = (): unknown => [
+  { kind: 'why', file: 'demo.c', line: lineOf('return v * 2;') },
+  { kind: 'edge', file: 'demo.c', line: lineOf('int demo_twice(int v)'), situation: 'v 很大' },
+]
+
+/** 学员答了 q1、空着 q2，并在追问栏里问了一句。 */
+const askingReply = async (): Promise<unknown> => ({
+  answers: [
+    { id: 'q1', selected: [], custom: '乘 2 就是左移一位' },
+    { id: 'q2', selected: [] },
+    { id: 'follow-up', selected: [], custom: '「很大」是多大？' },
+  ],
+})
+
+const OK_HINT = '「很大」指接近 int 能表示的上限；可以先查一下 int 的取值范围，再看这一行的乘法。'
+
 describe.skipIf(!hasBundle)('培训插件加载', () => {
-  it('注册了四个工具', () => {
+  it('注册了五个工具', () => {
     expect(tools.map((t) => t.name).sort()).toEqual([
+      'rcs_train_hint',
       'rcs_train_quiz',
       'rcs_train_review',
       'rcs_train_scaffold',
@@ -575,6 +608,142 @@ describe.skipIf(!hasBundle)('改动小测 —— 培训模式', () => {
     expect(JSON.stringify(deferred[0])).toContain('rcs_train_quiz')
   })
 
+  it('问答框最后是一栏可选的追问：不带选项，写明不给答案、会给老队员看', async () => {
+    await agentWrites(TWICE)
+    reply = async () => ({ answers: [{ id: 'q1', selected: [], custom: '左移' }] })
+    await quiz([{ kind: 'why', file: 'demo.c', line: lineOf('return v * 2;') }])
+    const last = items(0).at(-1)
+    expect(last?.id).toBe('follow-up')
+    expect(last).not.toHaveProperty('options')
+    expect(last?.detail).toContain('不会给答案')
+    expect(last?.detail).toContain('老队员')
+  })
+
+  it('空着一题并追问：先存盘翻篇，把追问原文交给模型，不带回答原文', async () => {
+    await agentWrites(TWICE)
+    reply = askingReply
+    const r = (await quiz(twoQuestions())) as { recorded: number; text: string }
+    expect(r.recorded).toBe(1)
+    expect(r.text).toContain('「很大」是多大？')
+    expect(r.text).toContain('rcs_train_hint')
+    expect(r.text).toContain('就是答案')
+    expect(r.text).not.toContain('左移')
+
+    const [saved] = records()
+    expect(saved?.followUps).toEqual([
+      { ask: '「很大」是多大？', hint: '', open: ['q2'], at: expect.any(String) },
+    ])
+    expect(ledger()).toEqual([])
+  })
+
+  it('回复追问：像代码的、太长的提示被拒且不弹框；合格的只重问空着的题，提示进问答框和记录', async () => {
+    await agentWrites(TWICE)
+    reply = askingReply
+    await quiz(twoQuestions())
+
+    await expect(hint({ hint: 'return v << 1;' })).rejects.toThrow(/像代码/)
+    await expect(hint({ hint: '很'.repeat(201) })).rejects.toThrow(/超过 200 字/)
+    expect(asked).toHaveLength(1)
+
+    reply = async () => ({ answers: [{ id: 'q2', selected: [], custom: '会溢出变成负数' }] })
+    const r = (await hint({ hint: OK_HINT })) as { recorded: number; text: string }
+    expect(r.recorded).toBe(1)
+    expect(r.text).not.toContain('负数')
+
+    const again = items(1)
+    expect(again.map((i) => i.id)).toEqual(['q2', 'follow-up'])
+    expect(again[0]?.header).toBe('改动小测 2/2 · 再问一次')
+    expect(again[0]?.detail).toContain('「很大」是多大？')
+    expect(again[0]?.detail).toContain(OK_HINT)
+
+    const saved = records()
+    expect(saved).toHaveLength(1) // 同一轮，改的是同一份记录
+    expect(saved[0]?.answers).toEqual([
+      { id: 'q1', text: '乘 2 就是左移一位' },
+      { id: 'q2', text: '会溢出变成负数', hintsSeen: 1 },
+    ])
+    expect(saved[0]?.followUps?.[0]?.hint).toBe(OK_HINT)
+  })
+
+  it('每轮最多追问两次，用完就不再给追问栏', async () => {
+    await agentWrites(TWICE)
+    reply = async () => ({
+      answers: [{ id: 'q1', selected: [] }, { id: 'follow-up', selected: [], custom: '看不懂' }],
+    })
+    await quiz([{ kind: 'why', file: 'demo.c', line: lineOf('return v * 2;') }])
+
+    reply = async () => ({
+      answers: [{ id: 'q1', selected: [] }, { id: 'follow-up', selected: [], custom: '还是看不懂' }],
+    })
+    const second = (await hint({ hint: OK_HINT })) as { text: string }
+    expect(second.text).toContain('最后一次追问')
+
+    reply = async () => ({ answers: [{ id: 'q1', selected: [], custom: '懂了' }] })
+    await hint({ hint: '题目问的是这一行在函数里起什么作用。' })
+    expect(items(2).map((i) => i.id)).toEqual(['q1'])
+    await expect(hint({ hint: OK_HINT })).rejects.toThrow(/没有等回复的追问/)
+
+    const [saved] = records()
+    expect(saved?.followUps).toHaveLength(2)
+    expect(saved?.answers).toEqual([{ id: 'q1', text: '懂了', hintsSeen: 2 }])
+  })
+
+  it('追问等回复时：不能出新题，本轮结束只提醒回复追问', async () => {
+    await agentWrites(TWICE)
+    reply = askingReply
+    await quiz(twoQuestions())
+
+    await new Promise((done) => setTimeout(done, 5)) // 台账时间戳精确到毫秒，保证新改动晚于这一轮
+    await agentWrites('\nint demo_thrice(int v)\n{\n    return v * 3;\n}\n')
+    await expect(
+      quiz([{ kind: 'why', file: 'demo.c', line: lineOf('return v * 3;') }]),
+    ).rejects.toThrow(/rcs_train_hint/)
+
+    const agent = fakeAgent()
+    await turnStopping(agent, 1)
+    expect(agent.steered).toHaveLength(1)
+    const text = (agent.steered[0] as { content: { text: string }[] }).content[0]?.text ?? ''
+    expect(text).toContain('rcs_train_hint')
+    expect(text).not.toContain('rcs_train_quiz')
+  })
+
+  it('题都答完了还写了追问：追问存盘留给老队员，不交给模型回复', async () => {
+    await agentWrites(TWICE)
+    reply = async () => ({
+      answers: [
+        { id: 'q1', selected: [], custom: '左移' },
+        { id: 'follow-up', selected: [], custom: '我答得对吗？' },
+      ],
+    })
+    const r = (await quiz([{ kind: 'why', file: 'demo.c', line: lineOf('return v * 2;') }])) as {
+      text: string
+    }
+    expect(r.text).toContain('不用回复')
+    expect(r.text).not.toContain('我答得对吗')
+    await expect(hint({ hint: OK_HINT })).rejects.toThrow(/没有等回复的追问/)
+    expect(records()[0]?.followUps).toEqual([
+      { ask: '我答得对吗？', hint: '', open: [], at: expect.any(String) },
+    ])
+  })
+
+  it('重问时学员关掉问答框：提示和已答的都留在记录里，空着的就空着', async () => {
+    await agentWrites(TWICE)
+    reply = askingReply
+    await quiz(twoQuestions())
+    reply = async () => {
+      throw new Error('ASK_CANCELLED')
+    }
+    const r = (await hint({ hint: OK_HINT })) as { text: string }
+    expect(r.text).toContain('关掉')
+    const [saved] = records()
+    expect(saved?.answers).toEqual([
+      { id: 'q1', text: '乘 2 就是左移一位' },
+      { id: 'q2', text: '' },
+    ])
+    expect(saved?.followUps?.[0]?.hint).toBe(OK_HINT)
+    await expect(hint({ hint: OK_HINT })).rejects.toThrow(/没有等回复的追问/)
+  })
+
   it('领任务时告诉学员有改动小测、回答会给老队员看', async () => {
     const r = (await tool('rcs_train_task')!.execute({ taskId: 'demo' }, exec)) as { text: string }
     expect(r.text).toContain('改动小测')
@@ -599,6 +768,9 @@ describe.skipIf(!hasBundle)('改动小测 —— 不是培训模式', () => {
         await expect(quiz([{ kind: 'why', file: 'demo.c', line: 1 }])).rejects.toThrow(
           /只在培训模式/,
         )
+        await expect(
+          tool('rcs_train_hint')!.execute({ hint: '题目问的是这一行的作用。' }, exec),
+        ).rejects.toThrow(/只在培训模式/)
       })
 
       it('验收单写明没开', async () => {

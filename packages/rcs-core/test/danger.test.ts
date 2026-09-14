@@ -179,6 +179,12 @@ describe('decide —— 培训模式', () => {
     expect(decide('rcs_train_quiz', training).kind).toBe('allow')
     expect(decide('rcs_train_quiz', dev).kind).toBe('allow')
   })
+
+  it('rcs_train_hint 属于 L1（会把 Agent 对追问的回复写进 .records），两种模式都放行', () => {
+    expect(levelOf('rcs_train_hint', training)).toBe('L1')
+    expect(decide('rcs_train_hint', training).kind).toBe('allow')
+    expect(decide('rcs_train_hint', dev).kind).toBe('allow')
+  })
 })
 
 describe('清单本身的完整性', () => {

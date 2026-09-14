@@ -17,7 +17,8 @@
  * 4. **改动小测只记录、不判分，也不瞒学员。** 培训模式下 Agent 改了学员的代码，
  *    本轮结束前就这次改动出 1–3 道开放题；回答原样存进工作目录的 `.records/`，
  *    培训结束后导出，给老队员挑追问的方向。题目钉在改动过的行上、不带答案；
- *    问答框、启动横幅、领任务时都明说回答会给老队员看。细节见 rcs-core/training-quiz.ts。
+ *    问答框、启动横幅、领任务时都明说回答会给老队员看。学员看不懂题可以追问，模型只能经
+ *    rcs_train_hint 回一段提示，提示原文同样进记录。细节见 rcs-core/training-quiz.ts。
  *
  * 适配层照例做薄：判断逻辑全在 `@rcs/core` 的 training / scaffold /
  * training-store / training-quiz 里，这里只负责包成 Tool、挂钩子、读写文件和渲染。
@@ -47,23 +48,32 @@ import {
 } from '../../rcs-core/src/training-store.ts'
 import type { Progress, ReviewReport } from '../../rcs-core/src/training-store.ts'
 import {
+  FOLLOW_UP_ID,
+  MAX_FOLLOW_UPS,
+  MAX_HINT_CHARS,
   MAX_QUESTIONS,
   QUIZ_INTRO,
-  QUIZ_NOTICE,
   RECORDS_DIR,
   answersFrom,
   buildQuestions,
   changeStat,
+  checkHint,
+  followUpFrom,
+  followUpsLeft,
+  hintsShown,
   isTrackedSource,
   lineRanges,
+  mergeAnswers,
+  openQuestions,
   parseQuestionRequests,
   pendingTaskIds,
+  quizItems,
   quizzableChanges,
   renderChanges,
   summarizeQuiz,
   taskOfPath,
 } from '../../rcs-core/src/training-quiz.ts'
-import type { FileChange } from '../../rcs-core/src/training-quiz.ts'
+import type { FileChange, QuizQuestion, QuizRecord } from '../../rcs-core/src/training-quiz.ts'
 import {
   advanceTask,
   currentChanges,
@@ -374,6 +384,13 @@ export function apply(ctx: Context, config: Config): void {
    */
   const declinedAt = new Map<string, string>()
 
+  /**
+   * 学员追问了、还等着模型回复的那一轮（按任务）。记录在追问那一刻就已存盘、改动也已翻篇，
+   * 这里只是让 rcs_train_hint 接得上。只在内存里：dsh 重启就作废 —— 追问原文仍在记录里，
+   * 只是没有回复，空着的题也不再重问。
+   */
+  const awaitingHint = new Map<string, QuizRecord>()
+
   function isRootAgent(agent: object): boolean {
     const registry = optional('agents') as { roots?: () => unknown[] } | undefined
     const roots = typeof registry?.roots === 'function' ? registry.roots() : undefined
@@ -388,6 +405,8 @@ export function apply(ctx: Context, config: Config): void {
     const ledger = loadLedger(root)
     const out: Waiting[] = []
     for (const taskId of pendingTaskIds(ledger)) {
+      // 追问还等着回复的任务先不催出新题：rcs_train_quiz 这时会拒绝，新改动等回复完再出题
+      if (awaitingHint.has(taskId)) continue
       const edits = ledger.edits.filter((e) => e.taskId === taskId)
       const declined = declinedAt.get(taskId)
       if (declined !== undefined && edits.every((e) => e.at <= declined)) continue
@@ -423,20 +442,34 @@ export function apply(ctx: Context, config: Config): void {
     return L.join('\n')
   }
 
+  function hintReminder(taskIds: readonly string[]): string {
+    return (
+      `[dsh4rcs 培训模式 · 改动小测] 学员在 ${taskIds.join('、')} 的小测里追问了，还没回复。` +
+      '结束本轮前，请调用 rcs_train_hint 回一段提示 —— 只帮学员弄清题意、指出该看哪，不给答案；' +
+      '工具会把提示连同空着的题再弹给学员。不要在对话里回答。'
+    )
+  }
+
   on('agent/turn-stopping', async (payload: { agent?: HostAgent; turn?: number }) => {
     try {
       const agent = payload.agent
       if (!quizOn() || agent === undefined || typeof agent.steer !== 'function') return
       if (steeredTurn.get(agent) === payload.turn || !isRootAgent(agent)) return
+      const hints = [...awaitingHint.keys()]
       const waiting = tasksAwaitingQuiz()
-      if (waiting.length === 0) return
+      if (hints.length === 0 && waiting.length === 0) return
       steeredTurn.set(agent, payload.turn ?? -1)
-      agent.steer(
-        pluginNotice(
-          quizReminder(waiting),
-          `改动小测：${waiting.map((w) => w.taskId).join('、')} 有改动待出题`,
-        ),
-      )
+      const text: string[] = []
+      const summary: string[] = []
+      if (hints.length > 0) {
+        text.push(hintReminder(hints))
+        summary.push(`${hints.join('、')} 的追问待回复`)
+      }
+      if (waiting.length > 0) {
+        text.push(quizReminder(waiting))
+        summary.push(`${waiting.map((w) => w.taskId).join('、')} 有改动待出题`)
+      }
+      agent.steer(pluginNotice(text.join('\n\n'), `改动小测：${summary.join('；')}`))
     } catch {
       /* 提醒失败就等验收单兜底 */
     }
@@ -467,6 +500,73 @@ export function apply(ctx: Context, config: Config): void {
         ? '学员工作目录里没有待答题的改动。'
         : `有多个任务都有改动（${withChanges.join('、')}），请用 taskId 指定。`,
     )
+  }
+
+  /** 学员写了追问、还有空着的题时交给模型的话：追问原文、空着的题、回复的规矩。不含任何回答。 */
+  function followUpBrief(record: QuizRecord, ask: string, open: readonly QuizQuestion[]): string {
+    const left = followUpsLeft(record.followUps)
+    const L = ['学员在追问栏里写了（原文，已存盘）：']
+    for (const line of ask.trim().split(/\r?\n/)) L.push(`  > ${line}`)
+    L.push('', '还空着、回复后会再问一次的题：')
+    for (const q of open) {
+      L.push(`  ${record.questions.findIndex((x) => x.id === q.id) + 1}. ${q.text}`)
+    }
+    L.push('')
+    L.push(
+      `请调用 rcs_train_hint（taskId: "${record.taskId}"）回一段提示，工具会把提示连同这几道题再弹给学员。规矩：`,
+    )
+    L.push('  - 只帮学员弄清题意：解释题目里的词、说清题目在问什么、指出该看哪几行，或者建议用 rcs_kb_search 查什么；')
+    L.push(
+      '  - 不许说出这一行为什么这样写、会发生什么，不许给改写后的代码或结论，' +
+        '也不许判断学员的想法对不对 —— 那些就是答案；',
+    )
+    L.push(`  - 不超过 ${MAX_HINT_CHARS} 字、不贴代码；提示原文会存进记录，老队员会看；`)
+    L.push('  - 不要在对话里回答学员，也不要问学员答了什么。')
+    L.push(left > 0 ? `这一轮学员还能再追问 ${left} 次。` : '这是这一轮最后一次追问，回复之后不再给追问栏。')
+    return L.join('\n')
+  }
+
+  /**
+   * 一次作答存盘之后给模型的话。学员写了追问、还有空着的题，就等模型回复；
+   * 题都答完了还写了追问，只存盘留给老队员 —— 没有要重问的题，也就没有要回复的，追问原文也不回传。
+   */
+  function settle(
+    record: QuizRecord,
+    ask: string,
+    lead: string,
+    recorded: number,
+  ): { recorded: number; text: string } {
+    const open = openQuestions(record.questions, record.answers)
+    if (ask.trim() !== '' && open.length > 0) {
+      awaitingHint.set(record.taskId, record)
+      return { recorded, text: `${lead}\n\n${followUpBrief(record, ask, open)}` }
+    }
+    const note =
+      ask.trim() !== ''
+        ? '学员在追问栏里也写了内容，但题都答完了：追问已随记录存盘，留给老队员，你不用回复。'
+        : ''
+    return {
+      recorded,
+      text: `${lead}${note}不要追问学员答了什么，也不要评价对错 —— 那留给验收时的老队员。`,
+    }
+  }
+
+  const NO_HINT_NOTE =
+    '只有 rcs_train_quiz / rcs_train_hint 的结果里说学员追问了，才用它回复。' +
+    '等回复的追问只在内存里，dsh 重启后作废（追问原文仍在记录里）。'
+
+  /** 回复哪个任务的追问：给了就用；没给就取唯一在等回复的那个。 */
+  function pickHintTask(requested: string | undefined): string {
+    if (requested !== undefined && requested !== '') {
+      if (awaitingHint.has(requested)) return requested
+      throw new Error(`任务 ${requested} 没有等回复的追问。${NO_HINT_NOTE}`)
+    }
+    const ids = [...awaitingHint.keys()]
+    if (ids.length === 1 && ids[0] !== undefined) return ids[0]
+    if (ids.length > 1) {
+      throw new Error(`有 ${ids.length} 个任务都有等回复的追问（${ids.join('、')}），请用 taskId 指定。`)
+    }
+    throw new Error(`现在没有等回复的追问。${NO_HINT_NOTE}`)
   }
 
   // ---------- rcs_train_task ----------
@@ -708,7 +808,9 @@ export function apply(ctx: Context, config: Config): void {
         '每道题钉在改动过的某一行上（file + line），题型只有 why（为什么这样写）、' +
         'what-if（改成 variant 会怎样）、edge（遇到 situation 会怎样），题干由工具生成。' +
         '**不要附答案，也不要在对话里暗示答案。** 学员的回答由工具原样存进工作目录的 .records，' +
-        '不回传对话、不评分，培训结束后导出交给老队员。',
+        '不回传对话、不评分，培训结束后导出交给老队员。' +
+        `问答框最后有一栏可选的追问（每轮最多 ${MAX_FOLLOW_UPS} 次）：学员写了追问，` +
+        '结果里会给出追问原文和回复的规矩，按规矩用 rcs_train_hint 回复。',
       parameters: {
         taskId: { type: 'string', description: '任务 id；省略时取有待答改动的那个任务' },
         questions: {
@@ -745,6 +847,12 @@ export function apply(ctx: Context, config: Config): void {
         }
         const root = workspaceRoot()
         const taskId = pickQuizTask(root, args.taskId)
+        if (awaitingHint.has(taskId)) {
+          throw new Error(
+            `学员在任务 ${taskId} 的小测里追问了，还没回复。` +
+              '先调用 rcs_train_hint 回复（工具会把空着的题再问一次），再出新题。',
+          )
+        }
         const cutoff = new Date()
         const { hasSnapshot, files, changes } = currentChanges(root, taskId)
         if (!hasSnapshot) {
@@ -781,12 +889,7 @@ export function apply(ctx: Context, config: Config): void {
         let reply: unknown
         try {
           reply = await service.ask({
-            questions: built.questions.map((q, i) => ({
-              id: q.id,
-              header: `改动小测 ${i + 1}/${total}`,
-              question: q.text,
-              detail: `${q.context}\n\n${QUIZ_NOTICE}`,
-            })),
+            questions: quizItems(built.questions, built.questions, []),
             ...(exec.agent !== undefined ? { agent: exec.agent } : {}),
             signal: exec.signal,
           })
@@ -798,11 +901,14 @@ export function apply(ctx: Context, config: Config): void {
           )
         }
 
+        // 有追问也先存盘、翻篇：已答的题不能因为模型没回复、或者 dsh 重启就丢。
+        // 追问之后的重问改的是同一份记录（文件名按 at 取）。
         const answers = answersFrom(built.questions, reply)
+        const ask = followUpFrom(reply)
         const agentEdits = loadLedger(root).edits.filter(
           (e) => e.taskId === taskId && e.at <= cutoff.toISOString(),
         )
-        saveRecord(root, {
+        const record: QuizRecord = {
           version: 1,
           taskId,
           student: loadProgress().student || config.student,
@@ -812,16 +918,151 @@ export function apply(ctx: Context, config: Config): void {
           diff: renderChanges(open),
           questions: built.questions,
           answers,
-        })
+          ...(ask.trim() !== ''
+            ? {
+                followUps: [
+                  {
+                    ask,
+                    hint: '',
+                    open: openQuestions(built.questions, answers).map((q) => q.id),
+                    at: new Date().toISOString(),
+                  },
+                ],
+              }
+            : {}),
+        }
+        saveRecord(root, record)
         advanceTask(root, taskId, files, cutoff)
 
         const filled = answers.filter((a) => a.text.trim() !== '').length
-        return {
-          recorded: filled,
-          text:
-            `学员答完了 ${total} 道题（${filled} 道有内容），回答已存盘，不回传对话、也不评分。` +
-            '不要追问学员答了什么，也不要评价对错 —— 那留给验收时的老队员。',
-        } as unknown as never
+        return settle(
+          record,
+          ask,
+          `学员答完了 ${total} 道题（${filled} 道有内容），回答已存盘，不回传对话、也不评分。`,
+          filled,
+        ) as unknown as never
+      },
+    }),
+  )
+
+  // ---------- rcs_train_hint ----------
+
+  ctx.tools.register(
+    defineTool({
+      name: 'rcs_train_hint',
+      description:
+        '改动小测的追问回复：rcs_train_quiz（或上一次 rcs_train_hint）的结果说学员追问了，就用它回一段提示，' +
+        '工具会把提示连同空着的题再弹给学员。' +
+        '**只帮学员弄清题意、指出该看哪，不给答案**：不说这一行为什么这样写、会发生什么，' +
+        '不给改写后的代码或结论，不判断学员的想法对不对。' +
+        `不超过 ${MAX_HINT_CHARS} 字、不贴代码；提示原文存进 .records，给老队员核对。`,
+      parameters: {
+        taskId: { type: 'string', description: '任务 id；省略时取唯一在等回复的那个' },
+        hint: {
+          type: 'string',
+          required: true,
+          description: `给学员的提示：不超过 ${MAX_HINT_CHARS} 字、不贴代码、不给答案`,
+        },
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            recorded: { type: 'number', description: '这次新答上的题数' },
+            text: { type: 'string', description: '结果说明（不含回答原文）' },
+          },
+        },
+        render: (_args, value) => {
+          const v = value as unknown as { text: string }
+          return [{ type: 'text', text: v.text ?? '' }]
+        },
+      },
+      presentCall: (args) => callView('回复学员的追问', args.taskId ?? '（在等回复的任务）'),
+      presentResult: (_a, r) =>
+        textView(String((r as { text?: string })?.text ?? '')),
+      async execute(args, exec) {
+        if (!quizOn()) {
+          throw new Error(
+            '改动小测只在培训模式下开启（npm run dsh:start:training）。现在不是培训模式，没有追问可回复。',
+          )
+        }
+        const taskId = pickHintTask(args.taskId)
+        const pending = awaitingHint.get(taskId)
+        const followUps = pending?.followUps ?? []
+        const last = followUps[followUps.length - 1]
+        if (pending === undefined || last === undefined || last.hint !== '') {
+          awaitingHint.delete(taskId)
+          throw new Error(`任务 ${taskId} 没有等回复的追问。${NO_HINT_NOTE}`)
+        }
+        const checked = checkHint(args.hint)
+        if (!checked.ok) {
+          throw new Error(
+            `提示没有弹给学员：\n  ${checked.problems.join('\n  ')}\n\n` +
+              '改好再调用一次 rcs_train_hint：只说清题意、指出该看哪，不给答案。',
+          )
+        }
+        const service = optional('userQuestions') as Partial<QuestionService> | undefined
+        if (typeof service?.ask !== 'function') {
+          throw new Error('当前环境没有 dsh 的问答框（userQuestions 服务），弹不出提示。学员的追问已在记录里。')
+        }
+
+        // 提示先进记录再弹框：弹出去就算给过学员了，哪怕接下来学员关框、dsh 退出
+        const root = workspaceRoot()
+        const hinted: QuizRecord = {
+          ...pending,
+          followUps: [...followUps.slice(0, -1), { ...last, hint: checked.hint }],
+        }
+        saveRecord(root, hinted)
+        awaitingHint.delete(taskId)
+
+        const open = openQuestions(hinted.questions, hinted.answers)
+        const items = quizItems(hinted.questions, open, hinted.followUps ?? [])
+        let reply: unknown
+        try {
+          reply = await service.ask({
+            questions: items,
+            ...(exec.agent !== undefined ? { agent: exec.agent } : {}),
+            signal: exec.signal,
+          })
+        } catch (error) {
+          return {
+            recorded: 0,
+            text:
+              `学员关掉了问答框（${error instanceof Error ? error.message : String(error)}）。` +
+              '你的提示和之前的回答都已存盘，空着的题就空着，验收时老队员会当面问；这一轮不用再弹。',
+          } as unknown as never
+        }
+
+        const answers = mergeAnswers(
+          hinted.answers,
+          answersFrom(open, reply),
+          hintsShown(hinted.followUps),
+        )
+        // 追问栏没给出来（次数用完了）就不认回复里的追问
+        const ask = items.some((i) => i.id === FOLLOW_UP_ID) ? followUpFrom(reply) : ''
+        const stillOpen = openQuestions(hinted.questions, answers)
+        const record: QuizRecord = {
+          ...hinted,
+          answers,
+          ...(ask.trim() !== ''
+            ? {
+                followUps: [
+                  ...(hinted.followUps ?? []),
+                  { ask, hint: '', open: stillOpen.map((q) => q.id), at: new Date().toISOString() },
+                ],
+              }
+            : {}),
+        }
+        saveRecord(root, record)
+
+        const filled = open.length - stillOpen.length
+        return settle(
+          record,
+          ask,
+          `学员这次又答了 ${filled} 道（还空着 ${stillOpen.length} 道），回答已存盘，不回传对话、也不评分。`,
+          filled,
+        ) as unknown as never
       },
     }),
   )

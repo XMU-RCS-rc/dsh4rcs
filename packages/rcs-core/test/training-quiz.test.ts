@@ -12,24 +12,33 @@ import { join } from 'node:path'
 
 import {
   BUNDLE_FORMAT,
+  FOLLOW_UP_ID,
+  MAX_FOLLOW_UPS,
+  MAX_HINT_CHARS,
   MAX_QUESTIONS,
   QUIZ_INTRO,
   QUIZ_NOTICE,
   answersFrom,
   buildQuestions,
   bundleStats,
+  checkHint,
   diffLines,
   diffSnapshots,
   emptyLedger,
   exportFileName,
+  followUpFrom,
+  followUpsLeft,
   isTrackedSource,
   lineRanges,
+  mergeAnswers,
+  openQuestions,
   parseBundle,
   parseLedger,
   parseQuestionRequests,
   parseRecord,
   pendingTaskIds,
   questionText,
+  quizItems,
   quizzableChanges,
   recordFileName,
   renderChanges,
@@ -352,7 +361,14 @@ describe('记录与导出文件', () => {
   })
 
   it('bundleStats 统计轮数、题数、空答、Agent 改动和未答题的改动', () => {
-    expect(bundleStats(bundle)).toEqual({ rounds: 1, questions: 2, blank: 1, agentEdits: 1, pendingFiles: 1 })
+    expect(bundleStats(bundle)).toEqual({
+      rounds: 1,
+      questions: 2,
+      blank: 1,
+      followUps: 0,
+      agentEdits: 1,
+      pendingFiles: 1,
+    })
   })
 
   it('文件名：去掉非法字符，没名字写「未署名」', () => {
@@ -409,5 +425,118 @@ describe('报告 —— 只摆事实，不打分', () => {
     ])
     expect(index).toContain('[小测.md](./%E5%B0%8F%E6%B5%8B.md)')
     expect(index).toContain('不代表掌握程度')
+  })
+})
+
+describe('追问 —— 看不懂题可以先问，Agent 只给提示', () => {
+  const qs = record.questions
+
+  it('追问栏的原文取自由文本；没写是空串', () => {
+    expect(followUpFrom({ answers: [{ id: FOLLOW_UP_ID, selected: [], custom: '「溢出」是什么？' }] })).toBe(
+      '「溢出」是什么？',
+    )
+    expect(followUpFrom({ answers: [{ id: 'q1', selected: [], custom: '回答' }] })).toBe('')
+    expect(followUpFrom(null)).toBe('')
+  })
+
+  it('追问栏的内容不会被当成哪道题的回答', () => {
+    const a = answersFrom(qs, { answers: [{ id: FOLLOW_UP_ID, selected: [], custom: '看不懂' }] })
+    expect(a.every((x) => x.text === '')).toBe(true)
+  })
+
+  it('问答框：题目在前，追问栏在最后、不带选项；追问次数用完就不再给', () => {
+    const first = quizItems(qs, qs, [])
+    expect(first.map((i) => i.id)).toEqual(['q1', 'q2', FOLLOW_UP_ID])
+    expect(first[0]?.detail).toBe(`${qs[0]?.context}\n\n${QUIZ_NOTICE}`)
+    expect(first[2]).not.toHaveProperty('options')
+    expect(first[2]?.detail).toContain('不会给答案')
+    expect(first[2]?.detail).toContain(`还能追问 ${MAX_FOLLOW_UPS} 次`)
+
+    const used = Array.from({ length: MAX_FOLLOW_UPS }, () => ({
+      ask: '？',
+      hint: '看第 4 行',
+      open: ['q2'],
+      at: record.at,
+    }))
+    expect(followUpsLeft(used)).toBe(0)
+    expect(quizItems(qs, [qs[1]!], used).map((i) => i.id)).toEqual(['q2'])
+  })
+
+  it('重问只问空着的题，题号不变，之前的追问与提示附在题下', () => {
+    const f = [{ ask: '「溢出」是什么？', hint: '指结果超出类型能表示的范围。', open: ['q2'], at: record.at }]
+    const [again] = quizItems(qs, openQuestions(qs, record.answers), f)
+    expect(again?.id).toBe('q2')
+    expect(again?.header).toBe('改动小测 2/2 · 再问一次')
+    expect(again?.detail).toContain('你的追问：「溢出」是什么？')
+    expect(again?.detail).toContain('Agent 的提示：指结果超出类型能表示的范围。')
+  })
+
+  it('合并回答：答过的一个字不动，只补空着的，并标上作答前看过几条提示', () => {
+    const merged = mergeAnswers(
+      record.answers,
+      [
+        { id: 'q1', text: '想改掉原答案' },
+        { id: 'q2', text: '会变成负数' },
+      ],
+      1,
+    )
+    expect(merged).toEqual([
+      { id: 'q1', text: '先求和再返回，\n少写一次 a + b' },
+      { id: 'q2', text: '会变成负数', hintsSeen: 1 },
+    ])
+  })
+
+  it('checkHint：说清题意的一句话放行；空的、太长的、贴代码的拒收', () => {
+    expect(checkHint('  「溢出」指结果超出 int 能表示的范围，可以查一下 int 的取值范围。  ')).toEqual({
+      ok: true,
+      hint: '「溢出」指结果超出 int 能表示的范围，可以查一下 int 的取值范围。',
+    })
+    expect(checkHint('   ').ok).toBe(false)
+    expect(checkHint('很'.repeat(MAX_HINT_CHARS + 1)).ok).toBe(false)
+    expect(checkHint('看这里：\n```c\nreturn a + b;\n```').ok).toBe(false)
+    expect(checkHint('改成这样就行：\nreturn a << 1;').ok).toBe(false)
+    expect(checkHint('if (x) {').ok).toBe(false)
+    expect(checkHint('#include <stdint.h>').ok).toBe(false)
+  })
+
+  const withFollowUp: QuizRecord = {
+    ...record,
+    answers: [record.answers[0]!, { id: 'q2', text: '会变成负数', hintsSeen: 1 }],
+    followUps: [
+      { ask: '「溢出」是什么？', hint: '指结果超出类型能表示的范围。', open: ['q2'], at: '2026-09-15T12:01:00.000Z' },
+      { ask: '我答得对吗？', hint: '', open: [], at: '2026-09-15T12:02:00.000Z' },
+    ],
+  }
+
+  it('parseRecord 认得带追问的记录、丢掉坏条目；没有追问字段的旧记录照样认', () => {
+    expect(parseRecord(JSON.parse(JSON.stringify(withFollowUp)))).toEqual(withFollowUp)
+    const bad = parseRecord({ ...withFollowUp, followUps: [{ ask: 1 }, withFollowUp.followUps![0]] })
+    expect(bad?.followUps).toHaveLength(1)
+    expect(parseRecord(record)).not.toHaveProperty('followUps')
+  })
+
+  it('报告列出追问原文与 Agent 提示原文，看过提示才答的题标出来', () => {
+    const b: RecordBundle = { ...bundle, records: [withFollowUp] }
+    const text = renderTraineeReport(b)
+    expect(text).toContain('> 「溢出」是什么？')
+    expect(text).toContain('（当时空着第 2 题）')
+    expect(text).toContain('> 指结果超出类型能表示的范围。')
+    expect(text).toContain('> （没回复）')
+    expect(text).toContain('（看过 1 条 Agent 提示后作答）')
+    expect(text).toContain('追问 2 次')
+    expect(bundleStats(b).followUps).toBe(2)
+    const index = renderCollectIndex([
+      { student: '小测', exportedAt: b.exportedAt, report: '小测.md', ...bundleStats(b) },
+    ])
+    expect(index).toContain('| 空着 | 追问 |')
+  })
+
+  it('验收单的汇总数得出追问次数', () => {
+    expect(summarizeQuiz([withFollowUp], [], [], true).followUps).toBe(2)
+  })
+
+  it('给学员的说明里写明可以追问、不给答案', () => {
+    expect(QUIZ_INTRO).toContain('追问')
+    expect(QUIZ_INTRO).toContain('不给答案')
   })
 })
