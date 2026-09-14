@@ -14,7 +14,12 @@
  */
 import { build } from 'esbuild'
 import { rmSync, mkdirSync, existsSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// 下面的路径都相对仓库根写（esbuild 的 metafile 键也相对工作目录），所以先切到仓库根 ——
+// 本文件在 scripts/ 下，从别的目录直接 node scripts/build.mjs 也不会找错地方。
+process.chdir(join(dirname(fileURLToPath(import.meta.url)), '..'))
 
 /** 所有 dsh 插件包（目录名即包名）。新增插件时加一行即可。 */
 const PLUGINS = [

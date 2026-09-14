@@ -2,7 +2,7 @@
 
 > 更新：2026-08-27
 > 面向：RCS 队内使用者与后续维护者
-> 相关：[`README.md`](./README.md)（安装与总览） · [`FEATURES.md`](./FEATURES.md)（功能清单与验证阶梯） · [`dsh-rcs-plugin-design.md`](./dsh-rcs-plugin-design.md)（完整功能设计）
+> 相关：[`../README.md`](../README.md)（安装与总览） · [`features.md`](./features.md)（功能清单与验证阶梯） · [`dsh-rcs-plugin-design.md`](./dsh-rcs-plugin-design.md)（完整功能设计）
 
 ---
 
@@ -120,7 +120,7 @@ npm run train:collect -- D:/收到的记录      # 老队员：汇总到 trainin
 
 四档危险度管控。**L2 物理动作**（烧录、电机使能、气路动作、总线下发）**需人工确认**；
 **LG 代码生成**在培训模式需过闸门。模式只有 `dev` 与 `training`，**没有一档是拒绝** ——
-曾经的 `field`（赛场只读）已删除，理由见 [README 的安全层一节](./README.md#安全层)。
+曾经的 `field`（赛场只读）已删除，理由见 [README 的安全层一节](../README.md#安全层)。
 模式跟着启动命令走：`dsh:start:training` 固定 `training`，`dsh:start:competition` 固定 `dev`，见下面「怎么用」。
 `training` 另外会开启上面的[改动小测](#改动小测)。
 
@@ -250,16 +250,19 @@ npm run dsh:config
 
 | 文件 | 内容 |
 |---|---|
-| `USAGE.md` | 本文 —— 总览与使用 |
+| `docs/usage.md` | 本文 —— 总览与使用 |
 | `README.md` | 安装、总览、安全层、文档导航 |
-| `FEATURES.md` | 功能清单、验证阶梯、版本新鲜度、还缺什么 |
+| `docs/features.md` | 功能清单、验证阶梯、版本新鲜度、还缺什么 |
 | `docs/install.md` | 目录布局、装进其它 profile、配置解析链 |
 | `docs/troubleshooting.md` | 排错 |
 | `docs/acceptance-prompts.md` | 验收提示词：真实模型 + 真实 dsh 逐条核对 |
 | `CONTRIBUTING.md` | 参与开发 |
-| `dsh-rcs-plugin-design.md` | 完整功能设计 v0.6（M0~M7 全景与实现状态） |
-| `rcs-embedded-roadmap.md` | 电控方向技术路线（不涉及插件） |
-| `deepseek-harness-plugin-guide.md` | dsh 插件开发通用指南 |
+| `docs/dsh-rcs-plugin-design.md` | 完整功能设计 v0.6（M0~M7 全景与实现状态） |
+| `docs/rcs-embedded-roadmap.md` | 电控方向技术路线（不涉及插件） |
+| `docs/deepseek-harness-plugin-guide.md` | dsh 插件开发通用指南 |
+| `docs/training-design.md` | 新生培训的设计稿 |
+| `docs/feishu-setup.md` | 飞书应用申请与授权的完整步骤 |
+| `docs/rules-2027-v0-analysis.md` | 2027「女娲补天」规则 V0 分析（是分析，不是规则） |
 
 ### 代码
 
@@ -293,15 +296,16 @@ packages/
 | `config/team.json` | **队内共享上下文的单一真相**，赛季一换只改这里 |
 | `config/layer-rules.json` | 分层规则、执行器基类、主题代码特征 |
 | `config/template-manifest.json` | 18 个例程清单、`headerOnly` 白名单 |
+| `config/overlays/` | dsh 启动覆盖：`dsh:start:training` / `dsh:start:competition` / `dsh:start:no-rcs` 各用一份 |
 | `data/rules/2027/V0/` | 规则原件、167 条结构化条款、约束表 |
 | `scripts/dsh.mjs` | 锁版本的 dsh 调用器，绕开 launcher |
 | `scripts/docx-to-rules.mjs` | 规则书 .docx → 结构化条款（零依赖） |
 | `scripts/feishu-check.mjs` | 飞书三层权限诊断，**用真实 token 探测** |
 | `scripts/kb-sync.mjs` | 命令行同步入口，不必启动 dsh |
 | `data/kb-cache/` | 飞书资料本地镜像（**已 gitignore**，队内资料不进仓库） |
-| `build.mjs` | esbuild 多插件构建，**检查宿主包泄漏** |
+| `scripts/build.mjs` | esbuild 多插件构建，**检查宿主包泄漏** |
 
-### 测试：372 个，全通过
+### 测试（早期快照；当前数量与分布见 [`features.md`](./features.md) 第四节）
 
 | 文件 | 数量 | 测什么 |
 |---|---|---|

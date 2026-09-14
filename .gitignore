@@ -53,5 +53,5 @@ config/team.local.json
 
 # --- L3 调试用的 patch overlay ---
 # 它必须写绝对的 file:/// URL（Windows 上 ESM 加载器不收裸盘符路径），
-# 因此天然是机器相关的。由 `npm run setup` 按本机路径生成。
+# 因此天然是机器相关的。由 `npm run setup` 按本机路径生成在 config/overlays/。
 dev.cordis.yml

@@ -146,7 +146,7 @@ describe('启动前检查的触发条件', () => {
   it('直接启动 profile 才检查', () => {
     expect(bootedProfile(['--profile', 'rcs-dev'])).toBe('rcs-dev')
     expect(bootedProfile(['--profile', 'rcs-dev', '--port', '3090', '--no-open'])).toBe('rcs-dev')
-    expect(bootedProfile(['--profile=rcs-dev', '--patch', './dsh4rcs-competition.cordis.yml'])).toBe('rcs-dev')
+    expect(bootedProfile(['--profile=rcs-dev', '--patch', './config/overlays/dsh4rcs-competition.cordis.yml'])).toBe('rcs-dev')
   })
 
   it('子命令、只打印配置、按模板初始化、帮助与版本号都不检查', () => {
@@ -190,7 +190,7 @@ describe('启动 overlay 与 profile 里的 guard 配置', () => {
   // 两条启动命令的意义就在于「模式写死、不继承 profile」。overlay 的 config 又是整段替换，
   // 所以两份文件都必须把 guard 的配置写全 —— 少写 extraL2 就等于悄悄清空它。
   it('培训 overlay 写死 training，且 guard 配置写全', () => {
-    const text = readRepoFile('dsh4rcs-training.cordis.yml')
+    const text = readRepoFile('config/overlays/dsh4rcs-training.cordis.yml')
     expect(patchSetsConfig(text, 'rcs-guard')).toBe(true)
     expect(text).toMatch(/^\s+mode:\s*training\s*$/m)
     expect(text).toMatch(/^\s+extraL2:/m)
@@ -198,7 +198,7 @@ describe('启动 overlay 与 profile 里的 guard 配置', () => {
   })
 
   it('比赛 overlay 写死 dev、关掉培训工具，且 guard 配置写全', () => {
-    const text = readRepoFile('dsh4rcs-competition.cordis.yml')
+    const text = readRepoFile('config/overlays/dsh4rcs-competition.cordis.yml')
     expect(patchSetsConfig(text, 'rcs-guard')).toBe(true)
     expect(text).toMatch(/^\s+mode:\s*dev\s*$/m)
     expect(text).toMatch(/^\s+extraL2:/m)

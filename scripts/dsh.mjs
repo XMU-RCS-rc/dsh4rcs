@@ -18,7 +18,7 @@
  *   3. 兜底：npx -y 拉取锁定版本
  *
  * 用法：node scripts/dsh.mjs <dsh 的原始参数>
- *   node scripts/dsh.mjs --profile web --dump-config --patch ./dev.cordis.yml
+ *   node scripts/dsh.mjs --profile web --dump-config --patch ./config/overlays/dev.cordis.yml
  *   node scripts/dsh.mjs plugin --profile rcs-dev add ./packages/dsh-rcs-control
  */
 import { existsSync, readFileSync } from 'node:fs'
@@ -137,7 +137,7 @@ function warnGuardConfigShadowed() {
   if (shadowed.length === 0) return
   note(`[dsh] 注意：${shadowed.join('、')} 里给 rcs-guard 配的 config 这次不生效 ——`)
   note(`      ${shadowing.join('、')} 会整段替换它（dsh 的 patch 不合并 config），extraL2 等以后者为准。`)
-  note('      队里的自定义 L2 工具请加在 dsh4rcs-training / dsh4rcs-competition 两份 overlay 的 extraL2 里。')
+  note('      队里的自定义 L2 工具请加在 config/overlays/ 下 dsh4rcs-training / dsh4rcs-competition 两份 overlay 的 extraL2 里。')
 }
 
 const blocked = refuseBrokenProfile()

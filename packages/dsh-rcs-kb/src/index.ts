@@ -252,7 +252,7 @@ export function apply(ctx: Context, config: Config): void {
     if (!team.feishu) {
       throw new Error(
         `${teamFile} 里没有 feishu 配置段。\n` +
-          '需要 appId、appSecretEnv、sources、cacheDir —— 见 feishu-setup.md。',
+          '需要 appId、appSecretEnv、sources、cacheDir —— 见 docs/feishu-setup.md。',
       )
     }
     return team.feishu

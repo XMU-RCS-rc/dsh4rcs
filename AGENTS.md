@@ -45,7 +45,7 @@
 ## 已知问题（别重复诊断）
 
 - `RCS_code/demo/RCS/user/host_link.cpp:89` 有一处 narrowing 编译错误。修法在同仓库的 `demo_function_dispatch` 里已存在（加 `(uint8_t)` cast）。**尚未修**。
-- `kin_chassis.cpp` 有三处缺陷：弧度/角度单位错配导致 `find_nearest` 退化为空操作、`rcs_omni4::inv_kin` 返回未初始化栈内存、`||`/`&&` 优先级混用。详见 `FEATURES.md` 附录。
+- `kin_chassis.cpp` 有三处缺陷：弧度/角度单位错配导致 `find_nearest` 退化为空操作、`rcs_omni4::inv_kin` 返回未初始化栈内存、`||`/`&&` 优先级混用。详见 `docs/features.md` 附录。
 - 路线图里的 CAN 缓冲区崩溃（git log `fa9056c`）优先级高于本插件的任何事项。
 
 ## 环境事实

@@ -30,7 +30,7 @@ const dry = args.includes('--dry')
 const team = JSON.parse(readFileSync(join(REPO, 'config', 'team.json'), 'utf8'))
 const fc = team.feishu
 if (!fc) {
-  console.error('config/team.json 里没有 feishu 配置段。见 feishu-setup.md。')
+  console.error('config/team.json 里没有 feishu 配置段。见 docs/feishu-setup.md。')
   process.exit(2)
 }
 

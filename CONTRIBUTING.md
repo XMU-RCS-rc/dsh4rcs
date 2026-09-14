@@ -28,7 +28,7 @@ npm run test        # 全量单元测试
 验证分六级（L0 typecheck → L4 装进 profile），每一层都能抓到下一层抓不到的东西。
 `npm run verify` 覆盖 L0~L1，CI 也只跑到这里；L3/L4 要启动 dsh 网页端，留给本地手动。
 
-**完整的阶梯表与各级当前状态见 [`FEATURES.md`](./FEATURES.md) 第四节** ——
+**完整的阶梯表与各级当前状态见 [`docs/features.md`](./docs/features.md) 第四节** ——
 带状态的那份是唯一真相，这里不复述，免得两处数字对不上。
 
 ---
@@ -48,10 +48,10 @@ API 变动只该打到薄薄的适配层。新加一个检查器时，先在 cor
 
 | 位置 | 作用 |
 |---|---|
-| `build.mjs` 的 `PLUGINS` | 构建产物 |
+| `scripts/build.mjs` 的 `PLUGINS` | 构建产物 |
 | `package.json` 的 `dsh:install` | 装进 profile |
 | `scripts/setup.mjs` 的 `plugins` | 自检报告的分母 |
-| `dsh4rcs-disabled.cordis.yml` | `dsh:start:no-rcs` 要能关掉它 |
+| `config/overlays/dsh4rcs-disabled.cordis.yml` | `dsh:start:no-rcs` 要能关掉它 |
 
 **3. 危险工具先登记再实现。** 会让硬件动起来的工具，在写代码之前就加进
 `packages/rcs-core/src/danger.ts` 的清单。这样它落地当天就自动受管控，

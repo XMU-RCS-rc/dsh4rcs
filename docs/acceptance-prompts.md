@@ -8,10 +8,10 @@
 
 757 个单元测试验的是逻辑，插件在真实 cordis 里的装配、每个工具的返回值对不对得上 schema 也有测试。**没人验过的是最后一层**：
 真实模型会不会选对工具、传对参数，工具在真 dsh 里跑不跑得通，改动小测的问答框到底弹不弹。
-FEATURES.md 验证阶梯里一直标着没复验的「经模型真实调用一次 `rcs_*` 工具」，就靠这份清单补上。
+features.md 验证阶梯里一直标着没复验的「经模型真实调用一次 `rcs_*` 工具」，就靠这份清单补上。
 
 这一层确实会出问题：2026-09-14 在真 dsh 里一调 `rcs_team_context` 就报
-`cannot get property "rcs" without inject`，而当时 693 个测试全绿（已修，见 FEATURES.md 第六节）。
+`cannot get property "rcs" without inject`，而当时 693 个测试全绿（已修，见 features.md 第六节）。
 
 ## 判定规则
 

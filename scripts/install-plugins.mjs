@@ -115,7 +115,7 @@ function dsh(args, label, { quietStdout = false, header = true } = {}) {
 // ---------- 1. 构建 ----------
 console.log(`\n[dsh:install 1/4] 构建 ${PLUGINS.length} 个插件`)
 {
-  const r = spawnSync(process.execPath, [join(REPO, 'build.mjs')], {
+  const r = spawnSync(process.execPath, [join(REPO, 'scripts', 'build.mjs')], {
     stdio: 'inherit',
     cwd: REPO,
   })

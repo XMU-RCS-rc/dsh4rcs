@@ -69,11 +69,11 @@ dsh4rcs 默认全部启用。按场景选启动命令：
 | `npm run dsh:start:no-rcs` | —（整套停用） | 关 | 临时停用全部 7 个入口，不卸载插件 |
 
 切换需要重启 dsh。启动横幅会报出生效的模式（`[rcs-guard] 培训模式…` 或 `[rcs-guard] 开发模式…`），
-对不上先看那一行；要看完整配置，跑 `npm run dsh:config -- --patch ./dsh4rcs-training.cordis.yml`。
+对不上先看那一行；要看完整配置，跑 `npm run dsh:config -- --patch ./config/overlays/dsh4rcs-training.cordis.yml`。
 
 **培训与比赛为什么要分两条命令**：guard 的模式本来是 profile 级配置，而以前没有任何启动命令会设它 ——
 培训机器照 README 跑 `dsh:start`，拿到的是 `dev`；谁为了上课把 profile 改成 `training` 却忘了改回来，
-比赛时又一直带着。现在两条命令把模式写死在各自的 overlay 里（`dsh4rcs-training.cordis.yml` /
+比赛时又一直带着。现在两条命令把模式写死在各自的 overlay 里（`config/overlays/` 下的 `dsh4rcs-training.cordis.yml` /
 `dsh4rcs-competition.cordis.yml`），不继承 profile。`rcs-train` 默认装着（不被调用时不做任何事），
 比赛那条命令顺手关掉它；老队员同一台笔记本既能备课又能打比赛，一条命令切换、不用重装 profile。
 
@@ -82,7 +82,7 @@ dsh4rcs 默认全部启用。按场景选启动命令：
 `rcs_train_generate`，这个工具还没实现，所以眼下真正起作用的只有前一处。
 见 [README 的安全层一节](../README.md#安全层)。
 
-培训插件的**改动小测**也跟着这个模式走：只在 `training` 下开启，见 [USAGE](../USAGE.md#改动小测)。
+培训插件的**改动小测**也跟着这个模式走：只在 `training` 下开启，见 [USAGE](./usage.md#改动小测)。
 所以 `dsh4rcs-training.cordis.yml` 里不给 `rcs-train` 单独配 —— 配了会整段替换 profile 里
 `rcs-train` 的配置（比如学员名字 `student`）。
 

@@ -89,14 +89,14 @@ npm run train:collect -- <收到的目录>   # 老队员：汇总成每人一份
 | `dsh-rcs-guard` | 0 | 危险操作分级，横切生效 |
 | `dsh-rcs-ui-client` | 0 | 队徽与整页 RCS 蓝白主题 |
 
-每个工具的参数与用法见 [`USAGE.md`](./USAGE.md)，设计取舍与实测结论见 [`FEATURES.md`](./FEATURES.md)。
+每个工具的参数与用法见 [`docs/usage.md`](./docs/usage.md)，设计取舍与实测结论见 [`docs/features.md`](./docs/features.md)。
 
 两条贯穿全套的原则：
 
 - **规则只检索、不解读。** 返回条款号 + 版本号 + 原文，判断留给人 —— 理解错的代价是整套方案返工。
 - **同步与检索解耦。** 飞书 API 随时可能不可达、限频或改版，所以检索永远读本地镜像，绝不实时打 API。
 
-> 工程检查**已经在队内代码里查出三个真实缺陷**，其中两个属于沉默失败：编译通过、运行不报错，只在场上表现为「今天车有点怪」。详见 [`FEATURES.md`](./FEATURES.md) 附录。
+> 工程检查**已经在队内代码里查出三个真实缺陷**，其中两个属于沉默失败：编译通过、运行不报错，只在场上表现为「今天车有点怪」。详见 [`docs/features.md`](./docs/features.md) 附录。
 
 ---
 
@@ -117,7 +117,7 @@ LG 目前只登记了尚未实现的 `rcs_train_generate`。`training` 另外会
 Agent 改了新生的代码，本轮结束前就这次改动出 1–3 道开放题，回答原样存在新生自己的培训目录里，
 培训结束后 `npm run train:export` 导出、老队员 `npm run train:collect` 汇总。不评分，也不瞒新生 ——
 问答框里写明了回答会给老队员看。看不懂题可以追问，Agent 只能回不给答案的提示，提示原文同样进记录 ——
-这一条靠规矩和记录，机器判断不了。见 [`USAGE.md`](./USAGE.md#改动小测)。
+这一条靠规矩和记录，机器判断不了。见 [`docs/usage.md`](./docs/usage.md#改动小测)。
 
 启动时打印生效策略 —— 安全配置最怕「以为开了其实没开」。
 
@@ -152,16 +152,16 @@ packages/
 
 | 文档 | 内容 |
 |---|---|
-| [`USAGE.md`](./USAGE.md) | 使用手册：每个工具的参数、返回与典型问法 |
-| [`FEATURES.md`](./FEATURES.md) | 功能清单、验证阶梯、版本新鲜度、还缺什么 |
+| [`docs/usage.md`](./docs/usage.md) | 使用手册：每个工具的参数、返回与典型问法 |
+| [`docs/features.md`](./docs/features.md) | 功能清单、验证阶梯、版本新鲜度、还缺什么 |
 | [`docs/install.md`](./docs/install.md) | 目录布局、装进其它 profile、配置解析链、飞书凭证 |
 | [`docs/troubleshooting.md`](./docs/troubleshooting.md) | 排错：版本锁死、双实例、启动失败 |
 | [`docs/acceptance-prompts.md`](./docs/acceptance-prompts.md) | 验收提示词：在 dsh 里逐条输入，对着 RCS_code 真实内容核对每个工具 |
 | [`CONTRIBUTING.md`](./CONTRIBUTING.md) | 参与开发：本地流程、改动约定、CI |
 | [`AGENTS.md`](./AGENTS.md) | 给 Agent 看的工作区说明 |
-| [`dsh-rcs-plugin-design.md`](./dsh-rcs-plugin-design.md) | 设计背景与模块规划 |
-| [`feishu-setup.md`](./feishu-setup.md) | 飞书应用申请与授权的完整步骤 |
-| [`training-design.md`](./training-design.md) | 新生培训的设计稿 |
+| [`docs/dsh-rcs-plugin-design.md`](./docs/dsh-rcs-plugin-design.md) | 设计背景与模块规划 |
+| [`docs/feishu-setup.md`](./docs/feishu-setup.md) | 飞书应用申请与授权的完整步骤 |
+| [`docs/training-design.md`](./docs/training-design.md) | 新生培训的设计稿 |
 
 ---
 

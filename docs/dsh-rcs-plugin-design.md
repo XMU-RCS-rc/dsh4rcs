@@ -436,9 +436,6 @@ dsh --profile rcs-field --dump-config     # 上场前务必验证生效配置
 ```
 dsh4rcs/
 ├── README.md
-├── deepseek-harness-plugin-guide.md
-├── dsh-rcs-plugin-design.md              # 本文
-├── rcs-embedded-roadmap.md
 ├── pnpm-workspace.yaml
 ├── packages/
 │   ├── dsh-rcs-core/
@@ -459,9 +456,14 @@ dsh4rcs/
 │   ├── specs/                            # 执行器、气动元件参数
 │   └── checklists/
 └── docs/
+    ├── dsh-rcs-plugin-design.md          # 本文
+    ├── deepseek-harness-plugin-guide.md
+    ├── rcs-embedded-roadmap.md
     ├── CONTRIBUTING.md                   # 防断代：怎么加一个新工具
     └── HANDOVER.md                       # 交接文档
 ```
+
+> 这是设计时的规划。实际布局以仓库为准，文档索引见 README 的「文档」一节。
 
 **分发**：队内私有，优先 **tarball 或私有 npm registry**（零授权安装）。
 

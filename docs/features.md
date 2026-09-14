@@ -1,7 +1,7 @@
 # dsh4rcs 功能清单
 
 > 更新：2026-09-14 · 7 个插件 · 26 个工具 · 757 个测试全通过
-> 使用方法见 [`USAGE.md`](./USAGE.md) · 设计背景见 [`dsh-rcs-plugin-design.md`](./dsh-rcs-plugin-design.md)
+> 使用方法见 [`usage.md`](./usage.md) · 设计背景见 [`dsh-rcs-plugin-design.md`](./dsh-rcs-plugin-design.md)
 
 ---
 
@@ -90,7 +90,7 @@ ROBOCON 每年换主题、赛季内还反复改版。整套插件按**多赛季�
 | `rcs_train_hint` | **L1** | 回复改动小测里的追问：新生看不懂题时在问答框最后一栏追问，Agent 回一段提示（≤200 字、不贴代码、不给答案），工具连同空着的题再弹一次；提示原文进记录。只在新生追问后可用 |
 | `rcs_train_review` | L0 | 验收单：测试、规范、改动小测汇总、还没答题的改动。不给总判定 |
 
-改动小测的回答不上验收单（验收单会进对话），培训结束后用 `npm run train:export` / `npm run train:collect` 收集，见 [`USAGE.md`](./USAGE.md#改动小测)。
+改动小测的回答不上验收单（验收单会进对话），培训结束后用 `npm run train:export` / `npm run train:collect` 收集，见 [`usage.md`](./usage.md#改动小测)。
 
 新生看不懂题可以追问，每轮最多 2 次。追问原文交给 Agent（回答不交），Agent 只能经 `rcs_train_hint` 回提示。
 **「提示里不给答案」机器保证不了** —— 提示是模型写的；工具只拦得住太长、贴代码、整行像代码的回复，
@@ -135,14 +135,14 @@ packages/
 | L2.5 插件加载 | 桩 ctx / 真实 cordis 跑 `apply` | ❌ | ✅ |
 | L3 dsh 加载 | `npm run dsh:patch` | ✅ | ✅ |
 | L4 profile 安装 | `npm run dsh:install` → `dsh:start` | ✅ | ✅ |
-| L5 真实模型验收 | 按 [`docs/acceptance-prompts.md`](./docs/acceptance-prompts.md) 在 dsh 里逐条输入 | ✅ | ⏳ 还没完整跑过 |
+| L5 真实模型验收 | 按 [`acceptance-prompts.md`](./acceptance-prompts.md) 在 dsh 里逐条输入 | ✅ | ⏳ 还没完整跑过 |
 
 **每一层都抓到了下一层抓不到的东西。** 测试用的是真实工程与真实规则数据，不是 mock。
-本地怎么跑见 [`CONTRIBUTING.md`](./CONTRIBUTING.md)。
+本地怎么跑见 [`../CONTRIBUTING.md`](../CONTRIBUTING.md)。
 
 L3/L4 在 0.1.5-rc.1 上的复验（临时 `DSH_HOME`，不碰日常 profile）：从零安装与 rc.6 旧 profile 迁移两条路径都装得上；
 服务端打印 guard 与 train 的启动横幅、无加载错误；无头 Chrome 打开网页端 1.3 秒越过 Loading plugins，
-侧栏队徽与蓝白主题生效，控制台零报错零警告。**没有复验的**：经模型真实调用一次 `rcs_*` 工具、PTC 模式。前者的逐条清单见 [`docs/acceptance-prompts.md`](./docs/acceptance-prompts.md)（验证阶梯 L5）。
+侧栏队徽与蓝白主题生效，控制台零报错零警告。**没有复验的**：经模型真实调用一次 `rcs_*` 工具、PTC 模式。前者的逐条清单见 [`acceptance-prompts.md`](./acceptance-prompts.md)（验证阶梯 L5）。
 
 0.1.5-rc.2 上的复验（同样在临时 `DSH_HOME`）：从零安装、rc.1 profile 就地升级、日常 profile 的副本三条路径
 都装得上；无头 Chrome（DevTools 协议）打开网页端 1.0–1.3 秒出现侧栏队徽，没有停在 Loading plugins，
@@ -242,7 +242,7 @@ L3/L4 在 0.1.5-rc.1 上的复验（临时 `DSH_HOME`，不碰日常 profile）�
 |---|---|---|
 | **规则书** | 纯过期提醒，不联网 | 后果最严重，但**没法自动检测** —— robocon.org.cn 没有接口，爬页面会给出比查不到危险得多的「假确认」。所以只把「该去看了」变显眼 |
 | **插件代码** | `git ls-remote` 比对本地 HEAD | 一次网络往返，复用已有凭据（私有库不用另外授权），**不改动本地仓库任何状态** |
-| **dsh 宿主** | npm registry 的 latest | 只提示，**绝不建议自动升级** —— 见 [`docs/troubleshooting.md`](./docs/troubleshooting.md) |
+| **dsh 宿主** | npm registry 的 latest | 只提示，**绝不建议自动升级** —— 见 [`troubleshooting.md`](./troubleshooting.md) |
 
 三条硬约束：
 

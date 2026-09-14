@@ -240,4 +240,4 @@ dsh 会在 pnpm 跑完后**自动同步** `dsh.profile.bundles`，不用手改 p
 
 ---
 
-还有问题看 [`../USAGE.md`](../USAGE.md) 的使用手册，或 [`../FEATURES.md`](../FEATURES.md) 的功能清单。
+还有问题看 [`usage.md`](./usage.md) 的使用手册，或 [`features.md`](./features.md) 的功能清单。

@@ -58,7 +58,7 @@ else {
 
 // ---------- 3. 构建产物 ----------
 console.log('\n[3/7] 构建产物')
-// 与 build.mjs 的 PLUGINS 保持一致。漏一个就会在 7 插件的仓库上报「5/5 已构建」——
+// 与 scripts/build.mjs 的 PLUGINS 保持一致。漏一个就会在 7 插件的仓库上报「5/5 已构建」——
 // 那是一个没验过的勾，正是本仓库「假绿比红更危险」那条要防的。
 const plugins = [
   'dsh-rcs-core',
@@ -129,7 +129,7 @@ if (existsSync(rules)) {
 // dev.cordis.yml 必须写绝对的 file:/// URL —— Windows 上 Node 的 ESM 加载器
 // 拒收裸盘符路径（ERR_UNSUPPORTED_ESM_URL_SCHEME: Received protocol 'd:'）。
 // 所以它天然是机器相关的、不进版本控制，这里按本机路径生成。
-const overlay = join(REPO, 'dev.cordis.yml')
+const overlay = join(REPO, 'config', 'overlays', 'dev.cordis.yml')
 if (!existsSync(overlay)) {
   const url = (p) => `file:///${join(REPO, 'packages', p, 'lib', 'index.js').replace(/\\/g, '/')}`
   const lines = [
@@ -149,7 +149,7 @@ if (!existsSync(overlay)) {
     '',
   ]
   writeFileSync(overlay, lines.join('\n'))
-  console.log('\n[5.5] 已生成 dev.cordis.yml（L3 调试用，按本机路径）')
+  console.log('\n[5.5] 已生成 config/overlays/dev.cordis.yml（L3 调试用，按本机路径）')
 }
 
 // ---------- 5.6 宿主包实例统一 ----------
