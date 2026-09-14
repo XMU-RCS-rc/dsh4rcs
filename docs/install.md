@@ -28,6 +28,11 @@ npm run dsh:start      # 或 dsh:start:training / dsh:start:competition
 **最常见的坑是没重启。** 仓库里明明修过的问题在 dsh 里照样出现 —— 比如工具报
 `returned invalid output`、`"value.reason" is not a declared property` —— 先确认 dsh 是在上面几步之后重新启动的。
 
+**更新只作用于 `rcs-dev` 这个 profile**（`npm run dsh:start*` 用的就是它，插件 link 到本仓库）。
+`web` 等其它 profile 里若装过 `dsh-rcs-*.tgz`，那是一份副本，上面几步碰不到它 —— 照样跑旧代码、照样报上面的错；
+`npm run dsh:patch` 起的就是 `web`。要么按下文「tgz 安装到其它 profile」重装，要么
+`node scripts/dsh.mjs plugin --profile web remove <包名…>` 卸掉、改用 `npm run dsh:start*`。
+
 `git pull` 报本地有改动：多半是 `npm run setup -- --write` 改过 `config/team.json`。先 `git stash`，拉完再 `git stash pop`。
 
 更新不会动这些：学员工作目录 `rcs-training/`（改动小测的记录在里面）、飞书镜像 `data/kb-cache/`、
