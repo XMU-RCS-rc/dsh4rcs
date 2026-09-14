@@ -114,11 +114,26 @@ node scripts/link-host-packages.mjs           # 修复
 
 ### `npm run dsh:start` 起不来
 
-先看端口是不是已经被另一个实例占了：报错会明确写 `EADDRINUSE: address already in use 127.0.0.1:3080`。
-换端口：`npm run dsh:start -- --port 3090`。
+**先等够 20 秒。** 正常启动时，终端先是 `[dsh] 使用 本地 node_modules (…)` 和一句「正在启动 … 约 20 秒后才打印 dsh web: 网址」，
+约 4 秒后出现几行 `[rcs-guard]` / `[rcs-train]`，再过十几秒才打印 `dsh web: http://127.0.0.1:3080/?token=…`，
+紧跟一行 `dsh web: opening the default browser` 并自动打开浏览器。实测 0.1.5-rc.2 从启动到打印网址 16–24 秒，
+把 rcs 插件全部关掉也是 16.7 秒 —— 这是 dsh 自己的启动耗时，不是卡住。网址里的 token 每次启动都换，
+旧标签页连不上新实例，要用新打印的那个地址。
 
-**不报错、不打印网址、也不退出**，是另一回事：终端里只有一行 `[dsh] 使用 本地 node_modules (…)`，
-之后什么都没有，3080 也没人监听。这是 profile 里没有网页界面，只剩 `dsh-base` —— 那是没有 web 服务的
+先看端口是不是已经被另一个实例占了：报错会明确写 `EADDRINUSE: address already in use 127.0.0.1:3080`。
+换端口：`npm run dsh:start -- --port 3090`。自己拼命令时，`--profile`、`--patch` 这些启动器参数要写在
+`--port`、`--no-open` 这些网页参数前面 —— 写反了 dsh 报一行 `error: unknown option '--patch'`，然后挂住、不打印网址。
+
+**等了一分钟仍不打印网址、也不退出**，先看 3080 有没有人在监听：
+
+```powershell
+Get-NetTCPConnection -LocalPort 3080 -State Listen
+```
+
+有输出：网页服务已经起来了。往上翻找 `dsh web:` 那一行，多半早就打印过、被后面的输出顶上去了；
+真没有，是有插件一直没加载完（cordis 的 inject 无限等待、不报错），用 `npm run dsh:start:no-rcs` 对比是不是 rcs 插件引起的。
+
+没有输出、终端里除了 `[dsh]` 开头的两行什么都没有：profile 里没有网页界面，只剩 `dsh-base` —— 那是没有 web 服务的
 agent 内核，起来就这么待着。用 `dsh:config` 确认：
 
 ```powershell
@@ -141,7 +156,7 @@ npm run dsh:start      # 这回会打印 dsh web: http://127.0.0.1:3080/…
 ```
 
 `dsh:start` 现在启动前会先看一眼 rcs-dev 的 bundles：缺 `dsh-web-app` 就直接停下并报这条修法，
-不再静默挂住。
+不再静默挂住。所以在现在的代码上，起来之后安静十几秒几乎都是网址还没打印 —— 先等，见本节开头。
 
 **网页能打开，但没有队徽、没有蓝白主题、对话里调不到 `rcs_*` 工具**：插件没装进 profile，
 `dsh:config` 里有 `dsh-web-app` 段、没有 `dsh-rcs-*` 段。现在的 `dsh:install` 先按 web 模板建 profile

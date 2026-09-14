@@ -42,6 +42,9 @@ features.md 验证阶梯里一直标着没复验的「经模型真实调用一�
 | H | `npm run dsh:start:training`（培训模式，见 H 段开头） |
 | I | `npm run dsh:start`、`npm run dsh:start:competition` |
 
+启动后约 20 秒才打印 `dsh web:` 网址并自动打开浏览器，这之前终端里只有 `[dsh]` 和几行 `[rcs-…]` 是正常的；
+过了一分钟还没有，见[排错](./troubleshooting.md)「`npm run dsh:start` 起不来」。
+
 ---
 
 ## A. 冒烟：插件活着

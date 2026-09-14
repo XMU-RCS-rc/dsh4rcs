@@ -147,7 +147,16 @@ let status
 if (blocked) {
   status = 1
 } else if (found) {
-  if (!process.env['DSH_QUIET']) console.error(`[dsh] 使用 ${found.source}`)
+  if (!process.env['DSH_QUIET']) {
+    console.error(`[dsh] 使用 ${found.source}`)
+    // 0.1.5-rc.2 从这里到打印 `dsh web:` 网址要 16–24 秒（关掉全部 rcs 插件也是这么久，是 dsh 自己的启动），
+    // 中间只有几行 [rcs-…]。不说一声，人会当它挂了。见 docs/troubleshooting.md「npm run dsh:start 起不来」。
+    const profile = bootedProfile(args)
+    if (profile !== undefined) {
+      const browser = args.includes('--no-open') ? '' : '并自动打开浏览器'
+      note(`[dsh] 正在启动 profile ${profile}：约 20 秒后才打印 dsh web: 网址${browser}，这之前没有网址是正常的`)
+    }
+  }
   const result = spawnSync(process.execPath, [found.bin, ...args], { stdio: 'inherit' })
   if (result.error) {
     note(`[dsh] 启动失败：${result.error.message}`)

@@ -27,7 +27,7 @@ npm install
 npm run setup          # 自检：Node / 依赖 / pnpm / 固件仓库 / 工具链，缺什么直接给命令
 npm run verify         # typecheck → build → test
 npm run dsh:install    # 装进 dsh 的 rcs-dev profile，最后一行是「完成。」才算装好
-npm run dsh:start      # 等打印出 dsh web 地址再开浏览器；新生培训改用 dsh:start:training
+npm run dsh:start      # 约 20 秒后打印 dsh web 地址并自动开浏览器；新生培训改用 dsh:start:training
 ```
 
 `npm run setup` 只读不写（除非加 `--write`），逐项告诉你还缺什么以及怎么补。**刚 clone 后不要跳过 `verify` 直接 `dsh:start`** —— 浏览器端 bundle 没构建，宿主会报缺 `lib/client.js`。**`dsh:install` 中途失败就先照报错修好再重跑，别接着 `dsh:start`** —— 半装的 profile 起来要么没有 `rcs_*` 工具，要么不打印网址、一直挂着。
