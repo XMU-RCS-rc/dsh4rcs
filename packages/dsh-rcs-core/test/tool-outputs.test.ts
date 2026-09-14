@@ -25,7 +25,7 @@
  * 新加的工具必须在这里有着落，否则「全部工具都覆盖到」那条会红。
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -137,14 +137,53 @@ const NOT_EXECUTED: Record<string, string> = {
 }
 
 let workspace = ''
+let kbCache = ''
+
+/**
+ * 飞书镜像用一份临时的，不读仓库里的 data/kb-cache：那份不进 git，CI 上没有，
+ * 而镜像不可用时 rcs_kb_search 直接报错（不再返回空）—— 用仓库那份就只有本机能绿。
+ * 放一篇能被「Keil 下载 安装」检索到的文档，走有命中的那条返回路径。
+ */
+function seedKbCache(dir: string): void {
+  mkdirSync(join(dir, 'docs'), { recursive: true })
+  writeFileSync(
+    join(dir, 'docs', 'k1.txt'),
+    'Keil MDK 下载与安装：装到 D:/keil，装完用 rcs_toolchain_status 确认能找到 UV4.exe。',
+    'utf8',
+  )
+  writeFileSync(
+    join(dir, 'manifest.json'),
+    JSON.stringify({
+      version: 1,
+      syncedAt: '2026-09-14T00:00:00.000Z',
+      sources: [{ label: 'A02 电控组(通用)', token: 'fA' }],
+      policy: { allowlistOnly: true, includeTypes: ['docx'], excludeTypes: ['file'], maxDepth: 6 },
+      docs: {
+        k1: {
+          token: 'k1',
+          name: 'Keil 下载与安装',
+          type: 'docx',
+          path: 'A02 电控组(通用)/环境/Keil 下载与安装',
+          url: 'https://xmurcsrobot.feishu.cn/docx/k1',
+          modifiedTime: '1000',
+          bytes: 90,
+        },
+      },
+      skippedByType: { file: 3 },
+    }),
+    'utf8',
+  )
+}
 
 beforeAll(async () => {
   if (!ready) return
   workspace = mkdtempSync(join(tmpdir(), 'rcs-tool-outputs-'))
+  kbCache = mkdtempSync(join(tmpdir(), 'rcs-tool-outputs-kb-'))
+  seedKbCache(kbCache)
   const configs: Record<(typeof PLUGINS)[number], unknown> = {
     'dsh-rcs-core': { teamConfig: TEAM },
     'dsh-rcs-rules': { rulesRoot: '', season: '', constraintsVersion: '' },
-    'dsh-rcs-kb': { teamConfig: '', cacheDir: '', appSecretEnv: 'RCS_TOOL_OUTPUTS_NO_SECRET' },
+    'dsh-rcs-kb': { teamConfig: '', cacheDir: kbCache, appSecretEnv: 'RCS_TOOL_OUTPUTS_NO_SECRET' },
     'dsh-rcs-control': {},
     'dsh-rcs-train': { curriculum: '', workspaceRoot: workspace, student: '' },
   }
@@ -159,6 +198,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   if (workspace !== '') rmSync(workspace, { recursive: true, force: true })
+  if (kbCache !== '') rmSync(kbCache, { recursive: true, force: true })
 })
 
 describe.skipIf(!ready)('工具返回值符合输出 schema', () => {
