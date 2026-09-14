@@ -1,6 +1,6 @@
 # dsh4rcs 功能清单
 
-> 更新：2026-09-08 · 7 个插件 · 24 个工具 · 581 个测试全通过
+> 更新：2026-09-14 · 7 个插件 · 25 个工具 · 739 个测试全通过
 > 使用方法见 [`USAGE.md`](./USAGE.md) · 设计背景见 [`dsh-rcs-plugin-design.md`](./dsh-rcs-plugin-design.md)
 
 ---
@@ -26,7 +26,7 @@ ROBOCON 每年换主题、赛季内还反复改版。整套插件按**多赛季�
 
 ---
 
-## 二、24 个工具
+## 二、25 个工具
 
 ### 规则（`dsh-rcs-rules`，5 个）
 
@@ -80,6 +80,17 @@ ROBOCON 每年换主题、赛季内还反复改版。整套插件按**多赛季�
 |---|---|---|
 | `rcs_team_context` | `robot` | 赛季、主题、规则版本、机器人角色与区域限制、固件技术栈、赛季倒计时 |
 
+### 新生培训（`dsh-rcs-train`，4 个）
+
+| 工具 | 危险度 | 作用 |
+|---|---|---|
+| `rcs_train_task` | L0 | 取任务：目标、前置知识在队内哪份资料里 |
+| `rcs_train_scaffold` | **L1** | 发基线：仓库里存完整实现，发放时按课程表挖空，**挖空失败拒绝发放** |
+| `rcs_train_quiz` | **L1** | 改动小测：就这次改动出 1–3 道开放题（题目钉在改动过的行上、不带答案），回答原样存进学员工作目录，不判分。只在培训模式下可用 |
+| `rcs_train_review` | L0 | 验收单：测试、规范、改动小测汇总、还没答题的改动。不给总判定 |
+
+改动小测的回答不上验收单（验收单会进对话），培训结束后用 `npm run train:export` / `npm run train:collect` 收集，见 [`USAGE.md`](./USAGE.md#改动小测)。
+
 ### 安全层（`dsh-rcs-guard`，无工具，横切生效）
 
 四档危险度：**L0 只读**放行 · **L1 本机写**放行（当前只是台账，不改变判定）· **L2 物理动作**（烧录、电机使能、气路动作、总线下发）**需人工确认** · **LG 代码生成**培训模式需过闸门。
@@ -113,17 +124,27 @@ packages/
 
 | 级别 | 做什么 | 需要 dsh | 状态 |
 |---|---|---|---|
-| L0 typecheck | 对着 `dsh-tools@0.1.0-rc.6` 的 `.d.ts` 检查 | ❌ | ✅ 零错误 |
-| L1 单元测试 | `vitest run` | ❌ | ✅ 581/581 |
+| L0 typecheck | 对着 `dsh-tools@0.1.5-rc.2` 的 `.d.ts` 检查 | ❌ | ✅ 零错误 |
+| L1 单元测试 | `vitest run` | ❌ | ✅ 739/739 |
 | L2 CLI 冒烟 | `npm run check -- all <工程>` | ❌ | ✅ |
 | L2.5 插件加载 | 桩 ctx / 真实 cordis 跑 `apply` | ❌ | ✅ |
 | L3 dsh 加载 | `npm run dsh:patch` | ✅ | ✅ |
 | L4 profile 安装 | `npm run dsh:install` → `dsh:start` | ✅ | ✅ |
+| L5 真实模型验收 | 按 [`docs/acceptance-prompts.md`](./docs/acceptance-prompts.md) 在 dsh 里逐条输入 | ✅ | ⏳ 还没完整跑过 |
 
 **每一层都抓到了下一层抓不到的东西。** 测试用的是真实工程与真实规则数据，不是 mock。
 本地怎么跑见 [`CONTRIBUTING.md`](./CONTRIBUTING.md)。
 
-### 测试分布（581 个）
+L3/L4 在 0.1.5-rc.1 上的复验（临时 `DSH_HOME`，不碰日常 profile）：从零安装与 rc.6 旧 profile 迁移两条路径都装得上；
+服务端打印 guard 与 train 的启动横幅、无加载错误；无头 Chrome 打开网页端 1.3 秒越过 Loading plugins，
+侧栏队徽与蓝白主题生效，控制台零报错零警告。**没有复验的**：经模型真实调用一次 `rcs_*` 工具、PTC 模式。前者的逐条清单见 [`docs/acceptance-prompts.md`](./docs/acceptance-prompts.md)（验证阶梯 L5）。
+
+0.1.5-rc.2 上的复验（同样在临时 `DSH_HOME`）：从零安装、rc.1 profile 就地升级、日常 profile 的副本三条路径
+都装得上；无头 Chrome（DevTools 协议）打开网页端 1.0–1.3 秒出现侧栏队徽，没有停在 Loading plugins，
+蓝白主题生效，控制台零报错零警告。rc.2 相对 rc.1 只改了 7 个前端包，插件 import 的宿主包一字未改。
+没复验的两项同上。
+
+### 测试分布（739 个）
 
 | 文件 | 数量 | 重点 |
 |---|---|---|
@@ -137,17 +158,21 @@ packages/
 | `dsh-rcs-rules/test` | 20 | 规则插件端到端 + 结果卡片 + 跨赛季入口 |
 | `dsh-rcs-guard/test` | 10 | **真实 cordis** 跑 waterfall |
 | `rcs-core/test/rules-data` | 9 | **规则提取质量**回归 |
-| `dsh-rcs-core/test` | 8 | **真实 cordis** 跑 Service 注册 |
+| `dsh-rcs-core/test` | 39 | **真实 cordis** 跑 Service 注册与工具执行（服务没声明进 inject，桩 ctx 测不出，这里会炸）；**全部 25 个工具的返回值逐个拿输出 schema 校验** |
 | `dsh-rcs-control/test` | 7 | 桩 ctx 跑 apply |
-| `rcs-core/test/kb-index` | 22 | 离线检索：坏数据不得抛、片段不得互相包含、**拉丁文查询不得误报** |
-| `dsh-rcs-kb/test` | 15 | 知识库插件端到端 + 结果卡片 |
+| `rcs-core/test/kb-index` | 30 | 离线检索：坏数据不得抛、片段不得互相包含、**拉丁文查询不得误报**、多个关键词各自匹配、中文模糊要对上大部分二元组 |
+| `rcs-core/test/kb-real` | 4 | 对真实镜像（没有镜像的机器上跳过）：「Keil 下载 安装」带片段、「量子计算」零命中 |
+| `dsh-rcs-kb/test` | 16 | 知识库插件端到端 + 结果卡片 |
 | `rcs-core/test/rule-diff` | 4 | diff 纯逻辑 |
+| `rcs-core/test/training-quiz` | 41 | 改动小测：改动行号、只改注释不出题、**题目必须钉在改动上**、回答原样进报告、报告不打分 |
+| `dsh-rcs-train/test` | 44 | 培训插件端到端 + 改动小测整条链；guard → core → train 的模式传递用**真实 cordis** |
+| `rcs-core/test/training-records` + `training-scripts` | 17 | 记录落盘；`train:export` → `train:collect` 真起进程走一遍 |
 
 ---
 
 ## 五、RCS 专属 UI
 
-**Tier 1 工具呈现（部分接入）** —— rc.6 的服务端会保存 `presentCall` / `presentResult`，但通用工具卡片只消费其中的搜索结果视图；自定义调用标题、图标与 generic 结果会被宿主忽略：
+**Tier 1 工具呈现（部分接入）** —— rc.6 的服务端会保存 `presentCall` / `presentResult`，但通用工具卡片只消费其中的搜索结果视图；自定义调用标题、图标与 generic 结果会被宿主忽略（rc.6 上的实测；0.1.5-rc.2 上看到的也一样 —— 2026-09-14 的真实会话里，`rcs_train_task` 的调用行显示成通用的「工具调用 · rcs_train_task · {}」）：
 
 - findings 天然是「文件 + 行号 + 说明」，映射到 dsh 的**搜索结果卡片**，可按文件折叠与点击跳转
 - 规则检索按**条款**折叠，分组名带版本号（脱离版本的条款号是危险的）
@@ -174,6 +199,12 @@ packages/
 | **权限提示把读写版并列展示** | 飞书的「任选其一」候选集被原样打印，看着像两个都要开 | 只渲染只读那一个，读写版标注为不要开 |
 | **片段互相包含** | 关键词密集出现时，三段摘要几乎一样 | 落在上一窗内的命中直接跳过 |
 | **二元组对拉丁文查询误报** | 查 `FromISR` 命中一篇全文没有该词的 ESP32 指南（`Fr/ro/om/mI/IS/SR` 在其中凑齐了） | 二元组只对中文启用；拉丁文走精确子串 + 大小写无关 |
+| **工具执行时读了没 inject 的服务** | `rcs_team_context` / `rcs_version_status` 注册在只声明了 `tools` 的 scope 里，执行时却读 `scoped.rcs`，真 dsh 里一调就报 `cannot get property "rcs" without inject`；桩 ctx 不管声明，693 个测试全绿 | inject 补上 `rcs`；`dsh-rcs-core/test/real-cordis` 在真实 cordis 里执行工具 |
+| **关掉问答框后又弹一次** | 学员在本轮中途关掉改动小测的问答框，本轮结束时提醒照发，框转眼又弹一次 —— 工具明明回了模型「这一轮不用再弹」 | 记下关框时刻，这之前的改动不再自动提醒；验收单按快照算，照样兜底 |
+| **培训工作目录的 PC 测试报「没有 cmake」** | `rcs_support_test` 只凭 `lib/libgtest.a` 判断要不要走 WSL；发给学员的工作目录没有 `lib/`（gtest 按 `/mnt/…` 绝对路径引用），于是落到 Windows 原生，WSL 里明明有 cmake 也叫人去装 Windows 版 —— ring-buffer 这个 PC 测试任务在 Windows 上跑不起来 | CMakeLists 写了 `/mnt/<盘>/` 路径就按 WSL 工程处理。真实发基线 + WSL 实跑：9 条 3 绿 6 红，补完 count / space 后 6 绿 3 红，与课程表预期一致 |
+| **知识库状态工具的返回值和声明对不上** | `rcs_kb_status` 多返回了 failed / bytes / sources / skippedByType，schema 只声明三个字段，dsh 0.1.5-rc.2 校验返回值，一调就报 invalid output；`rcs_kb_sync` 把整份镜像 manifest 原样返回，同样过不了 | schema 补全；同步只回传投影。`dsh-rcs-core/test/tool-outputs` 在真实 cordis 里执行全部工具，逐个拿输出 schema 校验返回值 |
+| **多个关键词被当成一整串检索** | 模型写「Keil 下载 安装」，原文里没有这一串，只剩二元组兜底、结果全无片段，模型断定「安装说明只有标题」并去闯飞书登录页 —— 正文其实就在镜像里 | 查询按空白切词、各自匹配，命中词多的排前；片段先保证每个命中的词各有一段 |
+| **中文模糊匹配凑上一个二元组就算命中** | 「量子计算」只靠一个「计算」二元组，就把检索上限 8 篇占满了无关文档；「急停回路」靠「回路」命中 CAN总线入门 —— 都没有片段 | 中文词的二元组要对上三分之二以上才算；`rcs-core/test/kb-real` 对真实镜像回归 |
 | **把模糊匹配说成「标题命中」** | 无片段时一律标注标题命中，等于骗读者 | 记录 `matchedIn`，如实区分标题/目录/正文/仅相关度 |
 | **规则本身是错的** | 「求最短路该用 `_to_0` 而非 `_to_180`」一次喷出 15 条误报 | 验算发现两者接 normalize 后**数学等价**，队内 gtest 正是在断言这点 —— 规则删除，留注释防重犯 |
 | 注释里的代码被当成代码 | R2 的 `//&& sign_back == 0)` 触发优先级告警 | 剥注释后再判断，保留行数不错位 |
@@ -237,7 +268,8 @@ packages/
 | 整页蓝白主题 / 品牌入口 | ✅ 主题 token 覆盖 + 侧栏队徽，随整套插件启停 |
 | UI 工程看板 | ⏸ 等 Node 侧快照/订阅数据源 |
 | 赛场清单 | ⏸ 等队里给实际内容 |
-| **新生培训** | ✅ guard 培训模式 + 课程表 + 三个工具（领任务/发基线/出验收单），首批 5 个任务挂在 F103 模板上。培训与比赛只差工具集，用 `dsh:start:competition` 切换 |
+| **新生培训** | ✅ guard 培训模式 + 课程表 + 四个工具（领任务/发基线/改动小测/出验收单），首批 5 个任务挂在 F103 模板上。培训用 `dsh:start:training`（安全层固定 training、开改动小测），比赛用 `dsh:start:competition`（关培训工具、固定 dev） |
+| 改动小测 | ✅ 只记录不判分：题目钉在改动过的行上、不带答案；回答存学员本机，`train:export` / `train:collect` 收集。插件链路有真实 cordis 测试，**还没经真实模型、真实新生跑过** |
 | 变异题引擎 / G2 水印 | ⏸ 二期，等一期跑过一轮真实新生 |
 | 飞书共享范围 | ⏸ 队里处理：收紧根目录可见性、把凭证类文档移出 |
 

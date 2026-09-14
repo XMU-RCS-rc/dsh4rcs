@@ -8,13 +8,13 @@
 
 ## 一、这是什么
 
-给 RCS 战队做的 DeepSeek Harness（dsh）插件套件。**7 个插件、24 个工具**，让 Agent 能直接回答「规则怎么说」和「我们的工程哪里不对」。
+给 RCS 战队做的 DeepSeek Harness（dsh）插件套件。**7 个插件、25 个工具**，让 Agent 能直接回答「规则怎么说」和「我们的工程哪里不对」。
 
 **当前赛季：2027 · 第二十六届 ROBOCON 竞技赛 · 主题「女娲补天」**（规则 V0 已入库）。
 
 ---
 
-## 二、24 个工具
+## 二、25 个工具
 
 ### 规则相关（`dsh-rcs-rules`）
 
@@ -64,7 +64,7 @@
 
 | 工具 | 参数 | 作用 |
 |---|---|---|
-| `rcs_kb_search` | `query`(必填)、`limit` | **离线**检索队内资料镜像，返回片段 + 飞书原文链接 |
+| `rcs_kb_search` | `query`(必填)、`limit` | **离线**检索队内资料镜像，返回片段 + 飞书原文链接。多个关键词用空格分开，各自匹配，命中词多的排前 |
 | `rcs_kb_status` | — | 镜像状态：上次同步、文档数、授权范围、按类型跳过数 |
 | `rcs_kb_sync` | `force` | 同步飞书资料到本地镜像。**联网 + 写盘 → L1** |
 
@@ -73,11 +73,49 @@
 >
 > 查不到东西时先跑 `rcs_kb_status` —— 要区分「镜像里没有」和「队里没有」。
 
+### 新生培训（`dsh-rcs-train`）
+
+| 工具 | 参数 | 作用 |
+|---|---|---|
+| `rcs_train_task` | `taskId` | 取任务：要加出什么功能、前置知识在队内哪份资料里。不传就按前置关系推荐下一个 |
+| `rcs_train_scaffold` | `taskId`(必填)、`force` | 把能跑但功能不全的基线发到学员工作目录。**挖空失败就拒绝发放** |
+| `rcs_train_quiz` | `questions`(必填)、`taskId` | **改动小测**：就这次改动弹 1–3 道开放题，回答原样存盘，不回传对话、不评分。只在培训模式下可用 |
+| `rcs_train_review` | `taskId`(必填)、测试与规范结果 | 给老队员看的验收单：测试几比几、规范、改动小测答了几轮、还有哪些改动没答题。**不给通过/不通过** |
+
+#### 改动小测
+
+只在 `npm run dsh:start:training` 下开启 —— 它跟着安全层的模式走，不单独配置。流程：
+
+1. Agent 用 dsh 的 `write` / `edit` / `str_replace_editor` 改了培训目录（默认是与本仓库同级的 `rcs-training/`）里的 C/C++ 代码，插件记下一笔；
+2. 本轮快结束时，插件提醒 Agent 调用 `rcs_train_quiz`。Agent 只挑位置（这次改动过的某一行）和题型：
+   `why`（为什么这样写）、`what-if`（换成另一种写法会怎样）、`edge`（遇到某种情形会怎样）。题干由模板生成，**不带答案**；
+3. 新生在 dsh 的问答框里作答。问答框里写着：「回答会原样存在你的培训目录里，培训结束后导出交给老队员看；这里不评分」；
+4. 回答存进 `rcs-training/.records/`，不回传对话，Agent 看不到；
+5. 新生关掉问答框没答、或者 Agent 没出题，`rcs_train_review` 出验收单时会列出「还没答题的改动」，并提醒 Agent 先补答。
+
+只改注释或空白不出题；每轮最多提醒一次，一轮最多 3 题。
+
+培训结束后：
+
+```bash
+npm run train:export -- --name 张三        # 新生：打成一个 rcs-training-records-张三-<日期>.json，交给老队员
+npm run train:collect -- D:/收到的记录      # 老队员：汇总到 training-reports/（每人一份 + index.md）
+```
+
+报告只摆题目、回答原文和对应的改动，**不打分** —— 用来挑当面追问的方向，是否掌握以当面提问为准。
+导出文件和报告都是新生的个人数据，已在 `.gitignore` 里，别提交。
+
+**如实说局限：** Agent 用 `bash` 写的代码、新生从网页复制粘贴来的代码，插件都看不到 ——
+验收单按「和上次答题时相比改了什么」兜底，但分不清是谁写的；新生让 Agent 替他答题，也拦不住。
+记录就在新生自己的电脑上，本来就瞒不住，所以也不瞒。
+
 ### 安全层（`dsh-rcs-guard`，无工具，横切生效）
 
 四档危险度管控。**L2 物理动作**（烧录、电机使能、气路动作、总线下发）**需人工确认**；
 **LG 代码生成**在培训模式需过闸门。模式只有 `dev` 与 `training`，**没有一档是拒绝** ——
 曾经的 `field`（赛场只读）已删除，理由见 [README 的安全层一节](./README.md#安全层)。
+模式跟着启动命令走：`dsh:start:training` 固定 `training`，`dsh:start:competition` 固定 `dev`，见下面「怎么用」。
+`training` 另外会开启上面的[改动小测](#改动小测)。
 
 > guard 按工具名精确匹配，只认 `rcs_*`。宿主自带的 `bash` / `pwsh` / `write` 不经过它，
 > 所以这一层是给 rcs 工具加的提醒，**不是沙箱**。
@@ -87,7 +125,9 @@
 ## 三、怎么用
 
 ```bash
-npm run dsh:start      # 启动 rcs-dev profile（插件已装好）
+npm run dsh:start               # 日常开发、备课（安全层按 profile 配置，默认 dev）
+npm run dsh:start:training      # 新生培训：安全层固定 training，开启改动小测
+npm run dsh:start:competition   # 比赛：关掉培训工具，安全层固定 dev
 ```
 
 浏览器打开提示的地址，然后直接问：
@@ -193,7 +233,7 @@ npm run dsh:config
 
 ### 不要直接敲 `dsh`
 
-系统的 `dsh` 是 `dsh-launcher`，内容是 `npx @deepseek-ai/dsh web %*`：**不锁版本**（会漂到新版），且**硬编码 `web` 子命令**（所以 `dsh --version` 会直接启服务看起来像卡住，`dsh plugin add` 更是彻底失效）。一律走 `npm run dsh:*`，它们经 `scripts/dsh.mjs` 锁定 `0.1.0-rc.6`。
+系统的 `dsh` 是 `dsh-launcher`，内容是 `npx @deepseek-ai/dsh web %*`：**不锁版本**（会漂到新版），且**硬编码 `web` 子命令**（所以 `dsh --version` 会直接启服务看起来像卡住，`dsh plugin add` 更是彻底失效）。一律走 `npm run dsh:*`，它们经 `scripts/dsh.mjs` 使用本仓库 `node_modules` 里锁定的 `0.1.5-rc.2`。
 
 ---
 
@@ -208,6 +248,7 @@ npm run dsh:config
 | `FEATURES.md` | 功能清单、验证阶梯、版本新鲜度、还缺什么 |
 | `docs/install.md` | 目录布局、装进其它 profile、配置解析链 |
 | `docs/troubleshooting.md` | 排错 |
+| `docs/acceptance-prompts.md` | 验收提示词：真实模型 + 真实 dsh 逐条核对 |
 | `CONTRIBUTING.md` | 参与开发 |
 | `dsh-rcs-plugin-design.md` | 完整功能设计 v0.6（M0~M7 全景与实现状态） |
 | `rcs-embedded-roadmap.md` | 电控方向技术路线（不涉及插件） |
