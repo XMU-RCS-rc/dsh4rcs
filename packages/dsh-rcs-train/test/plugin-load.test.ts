@@ -617,6 +617,8 @@ describe.skipIf(!hasBundle)('改动小测 —— 培训模式', () => {
     expect(last).not.toHaveProperty('options')
     expect(last?.detail).toContain('不会给答案')
     expect(last?.detail).toContain('老队员')
+    expect(last?.detail).toContain('跳过此问题')
+    expect(items(0)[0]?.detail).toContain('跳过此问题')
   })
 
   it('空着一题并追问：先存盘翻篇，把追问原文交给模型，不带回答原文', async () => {
@@ -681,6 +683,7 @@ describe.skipIf(!hasBundle)('改动小测 —— 培训模式', () => {
     reply = async () => ({ answers: [{ id: 'q1', selected: [], custom: '懂了' }] })
     await hint({ hint: '题目问的是这一行在函数里起什么作用。' })
     expect(items(2).map((i) => i.id)).toEqual(['q1'])
+    expect(items(2)[0]?.detail).not.toContain('跳过此问题')
     await expect(hint({ hint: OK_HINT })).rejects.toThrow(/没有等回复的追问/)
 
     const [saved] = records()

@@ -18,6 +18,7 @@ import {
   MAX_QUESTIONS,
   QUIZ_INTRO,
   QUIZ_NOTICE,
+  SKIP_TO_ASK,
   answersFrom,
   buildQuestions,
   bundleStats,
@@ -447,7 +448,8 @@ describe('追问 —— 看不懂题可以先问，Agent 只给提示', () => {
   it('问答框：题目在前，追问栏在最后、不带选项；追问次数用完就不再给', () => {
     const first = quizItems(qs, qs, [])
     expect(first.map((i) => i.id)).toEqual(['q1', 'q2', FOLLOW_UP_ID])
-    expect(first[0]?.detail).toBe(`${qs[0]?.context}\n\n${QUIZ_NOTICE}`)
+    // dsh 的问答框每项都要作答或跳过才能提交，「看不懂先跳过」得写在题下面
+    expect(first[0]?.detail).toBe(`${qs[0]?.context}\n\n${QUIZ_NOTICE}\n\n${SKIP_TO_ASK}`)
     expect(first[2]).not.toHaveProperty('options')
     expect(first[2]?.detail).toContain('不会给答案')
     expect(first[2]?.detail).toContain(`还能追问 ${MAX_FOLLOW_UPS} 次`)
@@ -460,6 +462,7 @@ describe('追问 —— 看不懂题可以先问，Agent 只给提示', () => {
     }))
     expect(followUpsLeft(used)).toBe(0)
     expect(quizItems(qs, [qs[1]!], used).map((i) => i.id)).toEqual(['q2'])
+    expect(quizItems(qs, [qs[1]!], used)[0]?.detail).not.toContain(SKIP_TO_ASK)
   })
 
   it('重问只问空着的题，题号不变，之前的追问与提示附在题下', () => {

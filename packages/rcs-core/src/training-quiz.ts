@@ -54,6 +54,9 @@ export const FOLLOW_UP_NOTICE =
   'Agent 只帮你弄清题意、指出该看哪，不会给答案；回复之后，空着的题会再问你一次。' +
   '追问会交给 Agent 看（回答不会），追问和回复也会存下来给老队员看。'
 
+/** 每道题下面那句：看不懂先跳过。还能追问时才写。 */
+export const SKIP_TO_ASK = '看不懂这道题：先点「跳过此问题」，到最后一栏「追问」里问。'
+
 /** 领任务、发基线时给学员的说明。 */
 export const QUIZ_INTRO =
   `培训模式下有「改动小测」：Agent 改了你的代码后，会就这次改动问你 1–${MAX_QUESTIONS} 个问题。` +
@@ -724,12 +727,17 @@ export type AskItem = { id: string; header: string; question: string; detail: st
 /**
  * 这一次要弹的问答框：`ask` 是要问的题（第一次是全部，之后只剩空着的），
  * 还能追问就在最后加一栏追问。追问不绑定哪道题，所以之前的追问与提示附在每道重问的题下面。
+ *
+ * dsh 的问答框一次只显示一道题，每项都要作答或点「跳过此问题」才能提交（见
+ * dsh-client-ui-user-questions 的 submitDrafts）。所以「看不懂先跳过、到最后一栏问」
+ * 要写在每道题下面 —— 只写在追问栏里，学员翻到那里之前就卡住了。
  */
 export function quizItems(
   questions: readonly QuizQuestion[],
   ask: readonly QuizQuestion[],
   followUps: readonly FollowUp[],
 ): AskItem[] {
+  const left = followUpsLeft(followUps)
   const thread = followUps
     .filter((f) => f.hint !== '')
     .map((f) => `你的追问：${f.ask.trim()}\n\nAgent 的提示：${f.hint}`)
@@ -739,15 +747,14 @@ export function quizItems(
       `改动小测 ${questions.findIndex((x) => x.id === q.id) + 1}/${questions.length}` +
       (thread.length > 0 ? ' · 再问一次' : ''),
     question: q.text,
-    detail: [q.context, ...thread, QUIZ_NOTICE].join('\n\n'),
+    detail: [q.context, ...thread, QUIZ_NOTICE, ...(left > 0 ? [SKIP_TO_ASK] : [])].join('\n\n'),
   }))
-  const left = followUpsLeft(followUps)
   if (left > 0) {
     items.push({
       id: FOLLOW_UP_ID,
       header: '追问（可选）',
-      question: '有看不懂的题吗？先把那道空着，在这里写下你想问的',
-      detail: `${FOLLOW_UP_NOTICE}这一轮还能追问 ${left} 次。`,
+      question: '有看不懂的题吗？在这里写下你想问的',
+      detail: `${FOLLOW_UP_NOTICE}没有要问的，点「跳过此问题」就提交了。这一轮还能追问 ${left} 次。`,
     })
   }
   return items
