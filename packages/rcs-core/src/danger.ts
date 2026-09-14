@@ -104,6 +104,11 @@ export const DEFAULT_DANGER_RULES: DangerRule[] = [
     level: 'L1',
     reason: '会把任务模板与测试写进学员的工作目录',
   },
+  {
+    tool: 'rcs_train_quiz',
+    level: 'L1',
+    reason: '会弹问答框，并把学员的回答写进培训工作目录的 .records',
+  },
 
   // ---- LG 代码生成 ----
   {

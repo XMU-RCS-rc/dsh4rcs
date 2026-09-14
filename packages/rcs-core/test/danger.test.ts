@@ -166,10 +166,18 @@ describe('decide —— 培训模式', () => {
 
   it('只读的培训工具不该被登记为危险', () => {
     const registered = new Set(DEFAULT_DANGER_RULES.map((r) => r.tool))
-    for (const t of ['rcs_train_task', 'rcs_train_quiz', 'rcs_train_review', 'rcs_train_progress']) {
+    for (const t of ['rcs_train_task', 'rcs_train_review', 'rcs_train_progress']) {
       expect(registered.has(t), `${t} 是只读工具，不该登记`).toBe(false)
       expect(decide(t, training).kind).toBe('allow')
     }
+  })
+
+  // 设计稿里它是 L0「出题与判分」；实现成了只记录不判分，但会把学员的回答写进工作目录，
+  // 所以登记为 L1 —— 这份清单同时是「哪些工具会落盘」的台账。
+  it('rcs_train_quiz 属于 L1（会把学员的回答写进工作目录），两种模式都放行', () => {
+    expect(levelOf('rcs_train_quiz', training)).toBe('L1')
+    expect(decide('rcs_train_quiz', training).kind).toBe('allow')
+    expect(decide('rcs_train_quiz', dev).kind).toBe('allow')
   })
 })
 

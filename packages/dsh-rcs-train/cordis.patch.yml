@@ -7,8 +7,11 @@
 # 而队里的工作盘是 D，三十多个新生的工作目录不该堆到系统盘。
 # 它仍然不和两个 git 仓库混在一起，学员改坏了不会波及队内代码。
 #
-# 注意：本插件只发任务和出验收单，**不判定"学会了"**。
+# 注意：本插件发任务、出改动小测和验收单，**不判定"学会了"**，改动小测也不判分。
 # 是否掌握由老队员提问后决定，工具只把机械部分自动化。
+#
+# 改动小测不在这里配：它跟着 rcs-guard 的 mode 走，只在 training 下开
+# （npm run dsh:start:training）。见 packages/rcs-core/src/training-quiz.ts。
 - insert:
     - id: rcs-train
       name: dsh-rcs-train

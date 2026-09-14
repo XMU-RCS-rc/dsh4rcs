@@ -7,7 +7,7 @@
  * 好处是策略可扩展、可审计，而且**新的 rcs 工具天然被纳入管控**，
  * 不用每个工具各写一遍。
  *
- * ## 两处与文档示例不同的真实 API（已对照 rc.6 的 .d.ts 核实）
+ * ## 两处与文档示例不同的真实 API（已对照 0.1.5-rc.2 的 .d.ts 核实，与 rc.6 一致）
  *
  *   1. `tools/pre-execute` 是 **waterfall**，签名是
  *      `(exec, next) => Promise<PreToolDecision>`，不是简单的 bail。
@@ -50,7 +50,7 @@ export const Config: Schema<Config> = Schema.object({
   extraL2: Schema.array(Schema.string()).default([]),
 })
 
-/** dsh 的 pre-execute 决策类型（与 rc.6 的 PreToolDecision 对齐）。 */
+/** dsh 的 pre-execute 决策类型（与 0.1.5-rc.2 的 PreToolDecision 对齐）。 */
 type PreToolDecision =
   | { kind: 'allow' }
   | { kind: 'deny'; reason: string }
@@ -59,6 +59,11 @@ type PreToolDecision =
 /** 只声明本插件用到的 exec 字段。 */
 interface PendingCall {
   name: string
+}
+
+/** ctx.rcs 上本插件用到的那一个面（dsh-rcs-core 的 RcsService.setGuardMode）。 */
+interface GuardModeSink {
+  setGuardMode(mode: GuardMode | undefined): void
 }
 
 export function apply(ctx: Context, config: Config): void {
@@ -84,6 +89,17 @@ export function apply(ctx: Context, config: Config): void {
   // 那道机制是给「一律拒绝」用的，而现存两种模式都只到 ask 为止：
   // 培训的约束是人在回路里确认，不是拦死 —— 学生要烧代码、要用 F407。
   // 要重新引入硬拒绝，先解决上面文件头写的覆盖面问题，否则挡不住 bash。
+
+  // ---- 把模式告诉其它 rcs 插件 ----
+  // 模式只在这里配置；rcs-train 的改动小测跟着它开关，不自己再配一份。
+  // 经 ctx.rcs 中转：没装 dsh-rcs-core 时这段不运行，rcs-train 就按「不是培训模式」处理。
+  ctx.inject(['rcs'], (scoped) => {
+    const rcs = (scoped as unknown as { rcs?: Partial<GuardModeSink> }).rcs
+    const publish = rcs?.setGuardMode
+    if (typeof publish !== 'function') return
+    publish.call(rcs, config.mode)
+    scoped.effect(() => () => publish.call(rcs, undefined))
+  })
 
   // ---- 启动时把生效策略打出来 ----
   // 安全配置最怕「以为开了其实没开」，所以加载即自报家门。

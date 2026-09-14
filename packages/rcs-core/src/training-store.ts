@@ -30,6 +30,7 @@
 import { dirname, join } from 'node:path'
 
 import type { TrainingTask } from './training.ts'
+import type { QuizSummary } from './training-quiz.ts'
 
 /* ---------- 工作目录 ---------- */
 
@@ -199,6 +200,42 @@ export type ReviewReport = {
   /** 用过几次 G2。 */
   generated: number
   reviews: number
+  /** 改动小测的汇总。不给就不出这一段（例如纯逻辑测试）。 */
+  quiz?: QuizSummary
+}
+
+/**
+ * 改动小测那几行。
+ *
+ * 回答原文刻意不上验收单：验收单是工具结果，会进对话 —— 原文进了对话，
+ * 模型就看得到，学员也能对着改口。原文走 train:export 交给老队员。
+ */
+function renderQuiz(q: QuizSummary): string[] {
+  if (!q.enabled && q.rounds === 0) {
+    return ['改动小测：未开启 —— 用 npm run dsh:start:training 启动才会出题']
+  }
+  const L: string[] = []
+  L.push(
+    `改动小测：答了 ${q.rounds} 轮 / ${q.questions} 题` +
+      (q.blank > 0 ? `（${q.blank} 题空着）` : '') +
+      (q.enabled ? '' : '；这次不是用培训模式启动的，不会再出新题'),
+  )
+  L.push(
+    q.agentEdits > 0
+      ? `Agent 改代码：${q.agentEdits} 次，涉及 ${q.agentFiles.join('、')}`
+      : 'Agent 改代码：没观测到',
+  )
+  L.push(
+    '  （只看得到 dsh 的 write / edit / str_replace_editor；Agent 用 bash 写的、' +
+      '从网页复制来的都看不到 —— 次数少不代表是自己写的）',
+  )
+  if (q.pending.length > 0) {
+    L.push('还没答题的改动：')
+    for (const c of q.pending) L.push(`  · ${c.file}（+${c.added} / −${c.removed}）`)
+    if (q.enabled) L.push('  → 先调用 rcs_train_quiz 就这些改动补答，再重新生成这张验收单')
+  }
+  L.push('回答原文不在这张单上，培训结束后用 npm run train:export 导出给老队员')
+  return L
 }
 
 /**
@@ -255,6 +292,7 @@ export function renderReview(r: ReviewReport): string {
       : `生成档位：**G2 使用过 ${r.generated} 次** —— 请重点核对学员是否理解每一行`,
   )
   L.push(`验收次数：第 ${r.reviews} 次`)
+  if (r.quiz !== undefined) L.push(...renderQuiz(r.quiz))
   L.push('')
 
   // ---- 要当面确认的现象 ----

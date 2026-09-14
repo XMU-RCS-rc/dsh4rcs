@@ -2,13 +2,15 @@
  * 培训插件的加载与端到端测试 —— 不启动 dsh、不碰真实固件仓库。
  *
  * 桩 ctx 跑 `apply`，用**临时目录**当课程表、工作目录和固件仓库，
- * 走完「领任务 → 发基线 → 出验收单」整条链。
+ * 走完「领任务 → 发基线 → 改动小测 → 出验收单」整条链。
  *
- * 重点验的是那条**安全性质**：裁剪失败时必须拒绝发放。
- * 挖不干净就等于把答案发给学员，而且没人会举报自己拿到了答案。
+ * 重点验两条性质：
+ *   1. 裁剪失败时必须拒绝发放。挖不干净就等于把答案发给学员，而且没人会举报自己拿到了答案。
+ *   2. 改动小测只在培训模式下记录；回答只落盘、不回传对话。模式由 guard 经 ctx.rcs
+ *      告诉本插件，桩里用一个假的 watchGuardMode 模拟；宿主的钩子由桩收下后手动触发。
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest'
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -34,8 +36,14 @@ interface PluginModule {
   apply(ctx: unknown, config: unknown): void
 }
 
+type Listener = (...args: unknown[]) => unknown
+
 let mod: PluginModule
 let tools: CapturedTool[] = []
+let listeners = new Map<string, Listener[]>()
+let setMode: (mode: string | undefined) => void = () => {}
+let asked: unknown[] = []
+let reply: ((request: unknown) => Promise<unknown>) | undefined
 let root = ''
 let fwRoot = ''
 let wsRoot = ''
@@ -132,9 +140,46 @@ beforeEach(() => {
   if (!hasBundle) return
   seed()
   tools = []
+  listeners = new Map()
+  asked = []
+  reply = undefined
+
+  // 假的 ctx.rcs：只有 guard 模式的订阅面。setMode 模拟 guard 写入模式。
+  let mode: string | undefined
+  let watcher: ((m: string | undefined) => void) | undefined
+  const fakeRcs = {
+    watchGuardMode(w: (m: string | undefined) => void) {
+      watcher = w
+      w(mode)
+      return () => {
+        watcher = undefined
+      }
+    },
+  }
+  setMode = (m) => {
+    mode = m
+    watcher?.(m)
+  }
+
+  // 假的问答框：记下弹了什么，按 reply 作答
+  const userQuestions = {
+    async ask(request: unknown) {
+      asked.push(request)
+      if (reply === undefined) throw new Error('测试没有配置回答')
+      return reply(request)
+    },
+  }
+
   const ctx = {
     tools: { register: (t: CapturedTool) => tools.push(t) },
     effect: (fn: () => unknown) => fn(),
+    on: (name: string, fn: Listener) => {
+      listeners.set(name, [...(listeners.get(name) ?? []), fn])
+    },
+    inject: (deps: string[], callback: (scoped: unknown) => void) => {
+      if (deps.includes('rcs')) callback({ rcs: fakeRcs, effect: () => {} })
+    },
+    get: (name: string) => (name === 'userQuestions' ? userQuestions : undefined),
   }
   // 让固件解析走临时目录
   process.env['RCS_CODE_ROOT'] = fwRoot
@@ -146,9 +191,68 @@ afterEach(() => {
   if (root !== '') rmSync(root, { recursive: true, force: true })
 })
 
+/* ---------- 触发宿主钩子的小工具 ---------- */
+
+const DOWNSTREAM = { kind: 'accept' }
+/** Agent 加的一段真代码。 */
+const TWICE = '\nint demo_twice(int v)\n{\n    return v * 2;\n}\n'
+
+const srcFile = (): string => join(wsRoot, 'demo', 'demo.c')
+
+function listener(name: string): Listener {
+  const fn = listeners.get(name)?.[0]
+  if (fn === undefined) throw new Error(`插件没有挂 ${name}`)
+  return fn
+}
+
+const preExecute = (call: object): unknown =>
+  listener('tools/pre-execute')(call, async () => ({ kind: 'allow' }))
+
+const postExecute = (call: object, result: object = { isError: false }): unknown =>
+  listener('tools/post-execute')(call, result, async () => DOWNSTREAM)
+
+async function turnStopping(agent: object, turn: number): Promise<void> {
+  await listener('agent/turn-stopping')({ agent, turn, signal: new AbortController().signal })
+}
+
+/** 模拟 Agent 用 edit 工具在学员的源文件末尾加一段：先过 pre-execute，写盘，再过 post-execute。 */
+async function agentWrites(extra: string): Promise<unknown> {
+  const call = { name: 'edit', arguments: { file_path: srcFile() } }
+  await preExecute(call)
+  writeFileSync(srcFile(), readFileSync(srcFile(), 'utf8') + extra, 'utf8')
+  return postExecute(call)
+}
+
+function lineOf(text: string): number {
+  return readFileSync(srcFile(), 'utf8').split(/\r?\n/).findIndex((l) => l.includes(text)) + 1
+}
+
+function ledger(): { file: string; tool: string }[] {
+  const path = join(wsRoot, '.records', 'ledger.json')
+  if (!existsSync(path)) return []
+  return (JSON.parse(readFileSync(path, 'utf8')) as { edits: { file: string; tool: string }[] }).edits
+}
+
+function records(): { answers: unknown; agentEdits: { file: string }[]; student: string }[] {
+  const dir = join(wsRoot, '.records', 'demo')
+  if (!existsSync(dir)) return []
+  return readdirSync(dir)
+    .filter((n) => n.endsWith('.json') && n !== 'snapshot.json')
+    .map((n) => JSON.parse(readFileSync(join(dir, n), 'utf8')))
+}
+
+function fakeAgent(): { steered: unknown[]; steer(message: unknown): void } {
+  const steered: unknown[] = []
+  return { steered, steer: (message: unknown) => void steered.push(message) }
+}
+
+const quiz = (questions: unknown): Promise<unknown> =>
+  tool('rcs_train_quiz')!.execute({ taskId: 'demo', questions }, exec)
+
 describe.skipIf(!hasBundle)('培训插件加载', () => {
-  it('注册了三个工具', () => {
+  it('注册了四个工具', () => {
     expect(tools.map((t) => t.name).sort()).toEqual([
+      'rcs_train_quiz',
       'rcs_train_review',
       'rcs_train_scaffold',
       'rcs_train_task',
@@ -162,8 +266,16 @@ describe.skipIf(!hasBundle)('培训插件加载', () => {
     expect(c['student']).toBe('')
   })
 
-  it('inject 只要 tools', () => {
+  it('inject 只要 tools —— rcs 与问答框都是可选的', () => {
     expect(mod.inject).toEqual(['tools'])
+  })
+
+  it('挂了改动小测要用的三个宿主钩子', () => {
+    expect([...listeners.keys()].sort()).toEqual([
+      'agent/turn-stopping',
+      'tools/post-execute',
+      'tools/pre-execute',
+    ])
   })
 })
 
@@ -312,6 +424,169 @@ describe.skipIf(!hasBundle)('rcs_train_review —— 验收单', () => {
     }
     expect(r.text).toContain('测试：未运行')
   })
+})
+
+describe.skipIf(!hasBundle)('改动小测 —— 培训模式', () => {
+  beforeEach(async () => {
+    setMode('training')
+    await tool('rcs_train_scaffold')!.execute({ taskId: 'demo' }, exec)
+  })
+
+  it('发基线时就留下第一份快照', () => {
+    expect(existsSync(join(wsRoot, '.records', 'demo', 'snapshot.json'))).toBe(true)
+  })
+
+  it('post-execute 记下 Agent 改了哪个文件，宿主的决定原样交回', async () => {
+    expect(await agentWrites(TWICE)).toBe(DOWNSTREAM)
+    expect(ledger().map((e) => [e.file, e.tool])).toEqual([['demo.c', 'edit']])
+  })
+
+  it('相对路径按会话目录解析，与宿主 fs 工具同一条规则', async () => {
+    writeFileSync(srcFile(), readFileSync(srcFile(), 'utf8') + TWICE, 'utf8')
+    await postExecute({
+      name: 'write',
+      arguments: { file_path: 'demo.c' },
+      agent: { session: { header: { cwd: join(wsRoot, 'demo') } } },
+    })
+    expect(ledger()).toHaveLength(1)
+  })
+
+  it('不记：工作目录外的文件、view、失败的调用、bash', async () => {
+    await postExecute({ name: 'write', arguments: { file_path: join(root, 'elsewhere.c') } })
+    await postExecute({ name: 'str_replace_editor', arguments: { command: 'view', path: srcFile() } })
+    await postExecute({ name: 'edit', arguments: { file_path: srcFile() } }, { isError: true })
+    await postExecute({ name: 'bash', arguments: { command: `echo x >> ${srcFile()}` } })
+    expect(ledger()).toEqual([])
+  })
+
+  it('本轮结束前提醒一次出题，同一轮不重复，下一轮还没答就再提醒', async () => {
+    await agentWrites(TWICE)
+    const agent = fakeAgent()
+    await turnStopping(agent, 1)
+    await turnStopping(agent, 1)
+    expect(agent.steered).toHaveLength(1)
+
+    const message = agent.steered[0] as {
+      role: string
+      source: { kind: string; plugin: string }
+      content: { text: string }[]
+    }
+    expect(message.role).toBe('user')
+    expect(message.source).toMatchObject({ kind: 'plugin', plugin: 'rcs-train' })
+    expect(message.content[0]?.text).toContain('rcs_train_quiz')
+    expect(message.content[0]?.text).toContain('demo.c')
+    expect(message.content[0]?.text).toContain('不要附答案')
+
+    await turnStopping(agent, 2)
+    expect(agent.steered).toHaveLength(2)
+  })
+
+  it('只改了注释：不提醒，直接翻篇', async () => {
+    await agentWrites('\n// 这里以后再补\n')
+    const agent = fakeAgent()
+    await turnStopping(agent, 1)
+    expect(agent.steered).toHaveLength(0)
+    expect(ledger()).toEqual([])
+  })
+
+  it('题目钉不到改动上：不弹框，并告诉模型哪些行可以出题', async () => {
+    await agentWrites(TWICE)
+    await expect(quiz([{ kind: 'why', file: 'demo.c', line: 1 }])).rejects.toThrow(
+      /没被这次改动碰过[\s\S]*可以出题的位置/,
+    )
+    expect(asked).toHaveLength(0)
+  })
+
+  it('学员作答后：回答原样存盘，结果里不带原文，改动翻篇', async () => {
+    await agentWrites(TWICE)
+    reply = async () => ({ answers: [{ id: 'q1', selected: [], custom: '乘 2 就是左移一位' }] })
+    const r = (await quiz([{ kind: 'why', file: 'demo.c', line: lineOf('return v * 2;') }])) as {
+      recorded: number
+      text: string
+    }
+    expect(r.recorded).toBe(1)
+    expect(r.text).not.toContain('左移')
+
+    // 问答框里有锚点代码，并明说回答会给老队员看
+    const request = asked[0] as { questions: { question: string; detail: string }[] }
+    expect(request.questions[0]?.question).toContain('demo.c 第')
+    expect(request.questions[0]?.detail).toContain('return v * 2;')
+    expect(request.questions[0]?.detail).toContain('老队员')
+
+    const [saved] = records()
+    expect(saved?.answers).toEqual([{ id: 'q1', text: '乘 2 就是左移一位' }])
+    expect(saved?.agentEdits.map((e) => e.file)).toEqual(['demo.c'])
+    expect(saved?.student).toBe('小测')
+
+    // 翻篇：台账清空，不再提醒，也没有可出题的改动
+    expect(ledger()).toEqual([])
+    const agent = fakeAgent()
+    await turnStopping(agent, 3)
+    expect(agent.steered).toHaveLength(0)
+    const again = (await quiz([{ kind: 'why', file: 'demo.c', line: 1 }])) as { text: string }
+    expect(again.text).toContain('没有需要出题的改动')
+  })
+
+  it('学员关掉问答框：不写记录，改动仍记为待答', async () => {
+    await agentWrites(TWICE)
+    reply = async () => {
+      throw new Error('ASK_ABORTED')
+    }
+    await expect(
+      quiz([{ kind: 'why', file: 'demo.c', line: lineOf('return v * 2;') }]),
+    ).rejects.toThrow(/没有作答/)
+    expect(records()).toEqual([])
+    expect(ledger()).toHaveLength(1)
+  })
+
+  it('验收单兜底：列出没答题的改动，并单独提醒模型先补答', async () => {
+    await agentWrites(TWICE)
+    const deferred: unknown[] = []
+    const r = (await tool('rcs_train_review')!.execute(
+      { taskId: 'demo' },
+      { ...exec, deferContext: (m: unknown) => deferred.push(m) },
+    )) as { text: string }
+    expect(r.text).toContain('还没答题的改动')
+    expect(r.text).toContain('demo.c')
+    expect(r.text).toContain('Agent 改代码：1 次')
+    expect(deferred).toHaveLength(1)
+    expect(JSON.stringify(deferred[0])).toContain('rcs_train_quiz')
+  })
+
+  it('领任务时告诉学员有改动小测、回答会给老队员看', async () => {
+    const r = (await tool('rcs_train_task')!.execute({ taskId: 'demo' }, exec)) as { text: string }
+    expect(r.text).toContain('改动小测')
+    expect(r.text).toContain('老队员')
+  })
+})
+
+describe.skipIf(!hasBundle)('改动小测 —— 不是培训模式', () => {
+  for (const mode of ['dev', undefined]) {
+    describe(`guard 模式：${mode ?? '（没装 guard）'}`, () => {
+      beforeEach(async () => {
+        setMode(mode)
+        await tool('rcs_train_scaffold')!.execute({ taskId: 'demo' }, exec)
+      })
+
+      it('不记账、不提醒、不出题', async () => {
+        await agentWrites(TWICE)
+        const agent = fakeAgent()
+        await turnStopping(agent, 1)
+        expect(ledger()).toEqual([])
+        expect(agent.steered).toHaveLength(0)
+        await expect(quiz([{ kind: 'why', file: 'demo.c', line: 1 }])).rejects.toThrow(
+          /只在培训模式/,
+        )
+      })
+
+      it('验收单写明没开', async () => {
+        const r = (await tool('rcs_train_review')!.execute({ taskId: 'demo' }, exec)) as {
+          text: string
+        }
+        expect(r.text).toContain('改动小测：未开启')
+      })
+    })
+  }
 })
 
 describe.skipIf(!hasBundle)('课程表坏了要拒绝加载', () => {

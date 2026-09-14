@@ -29,6 +29,8 @@
     "feishu:check": "node scripts/feishu-check.mjs",
     "kb:sync": "node scripts/kb-sync.mjs",
     "kb:dry": "node scripts/kb-sync.mjs --dry",
+    "train:export": "node scripts/train-export.mjs",
+    "train:collect": "node scripts/train-collect.mjs",
     "setup": "node scripts/setup.mjs",
     "postinstall": "node scripts/link-host-packages.mjs --postinstall"
   },
@@ -46,6 +48,8 @@
     "dsh:uninstall —— 从 rcs-dev profile 卸载全部 7 个插件（profile 本身保留）。只卸一个就直接 `node scripts/dsh.mjs plugin --profile rcs-dev remove <包名>`。",
     "dsh:install          —— 重新构建并装进 rcs-dev profile（改了代码后跑）",
     "kb:sync / kb:dry      —— 不启动 dsh 直接同步飞书资料；--dry 只遍历不抓正文，先看范围对不对",
+    "train:export         —— 新生培训结束后跑：把改动小测的题目与回答打成一个文件交给老队员（--name 写名字）",
+    "train:collect        —— 老队员跑：把收上来的文件汇总成 training-reports/ 下的报告（每人一份 + index.md），不打分",
     "dsh:patch            —— 用 --patch overlay 挂到 web profile（临时调试用，不改 profile）",
     "",
     "换 dsh 版本前请重跑 npm run verify。",

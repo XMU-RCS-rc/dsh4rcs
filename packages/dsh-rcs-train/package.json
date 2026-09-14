@@ -2,7 +2,7 @@
   "name": "dsh-rcs-train",
   "version": "0.1.0",
   "type": "module",
-  "description": "新生培训：领任务、发基线、出验收单（dsh 插件）",
+  "description": "新生培训：领任务、发基线、改动小测、出验收单（dsh 插件）",
   "main": "lib/index.js",
   "files": ["lib", "cordis.patch.yml"],
   "keywords": ["dsh-plugin"],

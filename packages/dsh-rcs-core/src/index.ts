@@ -15,6 +15,7 @@
  *   ctx.rcs.robot(id)        按 TR/BR 查角色与区域限制
  *   ctx.rcs.layerOf(file)    文件属于哪一工程层次
  *   ctx.rcs.countdown(today) 赛季倒计时
+ *   ctx.rcs.guardMode        rcs-guard 生效的模式（guard 写入，rcs-train 的改动小测跟着它开关）
  *
  * 另注册一个 `rcs_team_context` 工具，让模型能直接问「我们现在什么赛季、什么主题」。
  */
@@ -29,6 +30,7 @@ import type { ToolCallView } from '@deepseek-ai/dsh-tools'
 
 import { TeamContext, daysUntil } from '../../rcs-core/src/team-context.ts'
 import type { TeamConfig } from '../../rcs-core/src/team-context.ts'
+import type { GuardMode } from '../../rcs-core/src/danger.ts'
 import { repoPaths } from '../../rcs-core/src/paths.ts'
 import { nodeRunner } from '../../rcs-core/src/runner.ts'
 import {
@@ -59,6 +61,26 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
+/** 一个会通知的值：订阅时先回调一次当前值，之后每次变化再回调。 */
+function watchable<T>(initial: T) {
+  let value = initial
+  const watchers = new Set<(value: T) => void>()
+  return {
+    get: (): T => value,
+    set(next: T): void {
+      value = next
+      for (const watcher of [...watchers]) watcher(next)
+    },
+    watch(watcher: (value: T) => void): () => void {
+      watchers.add(watcher)
+      watcher(value)
+      return () => {
+        watchers.delete(watcher)
+      }
+    },
+  }
+}
+
 /**
  * 队内上下文服务。
  *
@@ -67,9 +89,32 @@ declare module '@deepseek-ai/cordis' {
 export class RcsService extends Service {
   readonly team: TeamContext
 
+  /**
+   * rcs-guard 生效的模式。**只由 guard 写入** —— 模式只在 guard 的配置里设，
+   * 其它插件（rcs-train 的改动小测）跟着它走，免得两处各配一份、迟早对不上。
+   * 没装 guard 时一直是 undefined，按「不是培训模式」处理。
+   */
+  private readonly guardModeState = watchable<GuardMode | undefined>(undefined)
+
   constructor(ctx: Context, config: Config) {
     super(ctx, 'rcs')
     this.team = TeamContext.fromFile(config.teamConfig || repoPaths.teamConfig())
+  }
+
+  get guardMode(): GuardMode | undefined {
+    return this.guardModeState.get()
+  }
+
+  setGuardMode(mode: GuardMode | undefined): void {
+    this.guardModeState.set(mode)
+  }
+
+  /**
+   * 订阅 guard 的模式：立即回调一次当前值，之后每次变化再回调；返回取消函数。
+   * 插件的加载顺序不固定，只在加载时读一次，可能读到 guard 还没写入的 undefined。
+   */
+  watchGuardMode(watcher: (mode: GuardMode | undefined) => void): () => void {
+    return this.guardModeState.watch(watcher)
   }
 
   get season(): string {
