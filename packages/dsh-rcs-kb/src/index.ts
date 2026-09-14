@@ -312,7 +312,18 @@ export function apply(ctx: Context, config: Config): void {
       presentCall: (args) => callView('检索队内资料', args.query),
       presentResult: (_args, result) => searchResultView(result),
       async execute(args) {
-        const hits = searchKb(cacheDir(), args.query, args.limit ?? 8)
+        const dir = cacheDir()
+        // 镜像读不出来时返回空结果是假绿：模型会照「没检索到」断定队里没有这份资料，
+        // 再让人去看 rcs_kb_status —— 那个工具要是也坏了，两头都查不出原因。所以这里直接报。
+        const status = kbStatus(dir)
+        if (!status.ok) {
+          throw new Error(
+            `${status.reason ?? `本地镜像不可用（${dir}）。`}\n` +
+              '检索只读本地镜像，镜像不可用时查什么都是空的 —— 这不代表队里没有这份资料。' +
+              '要同步先问用户：rcs_kb_sync 会联网、写盘。',
+          )
+        }
+        const hits = searchKb(dir, args.query, args.limit ?? 8)
         return { query: args.query, hits } as unknown as never
       },
     }),

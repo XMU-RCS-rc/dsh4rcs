@@ -13,6 +13,11 @@
  * 顺着 properties / items 逐层往下查，`json` 类型放行。它不管 required、也不查 null ——
  * 宿主可能比它严，所以最终还要在真 dsh 里跑一遍（docs/acceptance-prompts.md 的 C6 / C7）。
  *
+ * 宿主还有一道检查：返回值必须是**无损 JSON**。这一道用的是宿主自己的实现（dsh-util-values 的
+ * isJsonValue），不是复刻。2026-09-14 在真 dsh 里踩到：rcs_toolchain_status 把找到的工具写成
+ * `hint: undefined`、没找到的写成 `path: undefined`，一调就报 `value is not lossless JSON`，
+ * 而当时这里只有 schema 复刻，照样全绿。
+ *
  * 联网、要硬件或要 .docx 的工具不真跑：
  *   - rcs_fw_build / rcs_fw_flash / rcs_support_test：用 rcs-core 里同一个函数配假执行器造返回值
  *   - rcs_kb_sync：校验插件导出的 syncOutput 投影
@@ -25,11 +30,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Context, Service } from '@deepseek-ai/cordis'
+import { isJsonValue } from '@deepseek-ai/dsh-util-values'
 
-import { buildFirmware, flashFirmware, runSupportTests } from '../../rcs-core/src/toolchain.ts'
+import { buildFirmware, flashFirmware, probeToolchain, runSupportTests } from '../../rcs-core/src/toolchain.ts'
 import type { CommandResult, CommandRunner, ProbeDeps } from '../../rcs-core/src/toolchain.ts'
 import { DEFAULT_SYNC_POLICY } from '../../rcs-core/src/kb-sync.ts'
 import type { SyncResult } from '../../rcs-core/src/kb-sync.ts'
+import { kbStatus } from '../../rcs-core/src/kb-index.ts'
 
 const REPO = join(import.meta.dirname, '..', '..', '..')
 const PLUGINS = ['dsh-rcs-core', 'dsh-rcs-rules', 'dsh-rcs-kb', 'dsh-rcs-control', 'dsh-rcs-train'] as const
@@ -76,6 +83,11 @@ function violations(schema: Schema | undefined, value: unknown, path = 'value'):
   }
 }
 
+/** 真 dsh 的两道检查：无损 JSON（宿主自己的 isJsonValue）+ 输出 schema（上面的复刻）。 */
+function problems(schema: Schema | undefined, value: unknown): string[] {
+  return [...(isJsonValue(value) ? [] : ['value is not lossless JSON']), ...violations(schema, value)]
+}
+
 interface RegisteredTool {
   name: string
   output?: { schema?: Schema }
@@ -110,7 +122,7 @@ function schemaOf(name: string): Schema | undefined {
 
 async function run(name: string, args: unknown): Promise<string[]> {
   const value = await registered.get(name)!.execute(args, exec)
-  return violations(schemaOf(name), value)
+  return problems(schemaOf(name), value)
 }
 
 /** 真跑过的工具。 */
@@ -208,7 +220,7 @@ describe.skipIf(!ready)('工具返回值符合输出 schema', () => {
         project, run: runner(2), deps: deps(['uvprojx', 'UV4.exe'], []), readLog: () => '',
       })
       const blocked = await buildFirmware({ project, run: runner(0), deps: deps([], []), readLog: () => '' })
-      for (const r of [okWithWarnings, failedBare, blocked]) expect(violations(schemaOf('rcs_fw_build'), r)).toEqual([])
+      for (const r of [okWithWarnings, failedBare, blocked]) expect(problems(schemaOf('rcs_fw_build'), r)).toEqual([])
     })
 
     it('rcs_fw_flash：只校验、脚本缺失', async () => {
@@ -219,7 +231,7 @@ describe.skipIf(!ready)('工具返回值符合输出 schema', () => {
         script, binary, run: runner(0, 'verify ok'), deps: deps(['swd_flash.py', '.bin'], ['python']), write: false,
       })
       const blocked = await flashFirmware({ script, binary, run: runner(0), deps: deps([], []), write: false })
-      for (const r of [verified, blocked]) expect(violations(schemaOf('rcs_fw_flash'), r)).toEqual([])
+      for (const r of [verified, blocked]) expect(problems(schemaOf('rcs_fw_flash'), r)).toEqual([])
     })
 
     it('rcs_support_test：WSL 跑通、工具链缺失', async () => {
@@ -234,7 +246,7 @@ describe.skipIf(!ready)('工具返回值符合输出 schema', () => {
       const blocked = await runSupportTests({
         testDir: 'D:/x', run: runner(0), deps: deps(['CMakeLists.txt'], []), readFileBytes: () => undefined,
       })
-      for (const r of [ran, blocked]) expect(violations(schemaOf('rcs_support_test'), r)).toEqual([])
+      for (const r of [ran, blocked]) expect(problems(schemaOf('rcs_support_test'), r)).toEqual([])
     })
 
     it('rcs_kb_sync：交给宿主的是投影，不带整份 manifest', async () => {
@@ -255,7 +267,28 @@ describe.skipIf(!ready)('工具返回值符合输出 schema', () => {
       }
       const out = syncOutput(result)
       expect(out).not.toHaveProperty('manifest')
-      expect(violations(schemaOf('rcs_kb_sync'), out)).toEqual([])
+      expect(problems(schemaOf('rcs_kb_sync'), out)).toEqual([])
+    })
+  })
+
+  describe('同一个工具的其它分支', () => {
+    it('rcs_kb_status：镜像不存在时的返回值也符合 schema、是无损 JSON', () => {
+      const empty = mkdtempSync(join(tmpdir(), 'rcs-kb-empty-'))
+      try {
+        const status = kbStatus(empty)
+        expect(status.ok).toBe(false)
+        expect(problems(schemaOf('rcs_kb_status'), status)).toEqual([])
+      } finally {
+        rmSync(empty, { recursive: true, force: true })
+      }
+    })
+
+    it('rcs_toolchain_status：全都有、全都没有，返回值都是无损 JSON', () => {
+      const none: ProbeDeps = { exists: () => false, which: () => undefined }
+      const all: ProbeDeps = { exists: () => true, which: (c) => `/usr/bin/${c}` }
+      for (const d of [none, all]) {
+        expect(problems(schemaOf('rcs_toolchain_status'), { tools: probeToolchain(d) })).toEqual([])
+      }
     })
   })
 
@@ -310,6 +343,13 @@ describe('校验器本身会报错 —— 不然上面全绿也说明不了什�
   it('类型不对也报', () => {
     const schema: Schema = { type: 'object', additionalProperties: false, properties: { line: { type: 'integer' } } }
     expect(violations(schema, { line: 1.5 })).toEqual(['value.line 应为 integer'])
+  })
+
+  it('值为 undefined 的键报 not lossless JSON —— 这一道用的是宿主自己的 isJsonValue', () => {
+    const schema: Schema = { type: 'object', additionalProperties: false, properties: { tools: { type: 'json' } } }
+    const found = { id: 'keil', available: true, path: 'D:/keil/UV4/UV4.exe' }
+    expect(problems(schema, { tools: [{ ...found, hint: undefined }] })).toEqual(['value is not lossless JSON'])
+    expect(problems(schema, { tools: [found] })).toEqual([])
   })
 })
 

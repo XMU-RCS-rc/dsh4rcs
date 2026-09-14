@@ -1,6 +1,6 @@
 # dsh4rcs 功能清单
 
-> 更新：2026-09-14 · 7 个插件 · 26 个工具 · 757 个测试全通过
+> 更新：2026-09-14 · 7 个插件 · 26 个工具 · 763 个测试全通过
 > 使用方法见 [`usage.md`](./usage.md) · 设计背景见 [`dsh-rcs-plugin-design.md`](./dsh-rcs-plugin-design.md)
 
 ---
@@ -130,7 +130,7 @@ packages/
 | 级别 | 做什么 | 需要 dsh | 状态 |
 |---|---|---|---|
 | L0 typecheck | 对着 `dsh-tools@0.1.5-rc.2` 的 `.d.ts` 检查 | ❌ | ✅ 零错误 |
-| L1 单元测试 | `vitest run` | ❌ | ✅ 757/757 |
+| L1 单元测试 | `vitest run` | ❌ | ✅ 763/763 |
 | L2 CLI 冒烟 | `npm run check -- all <工程>` | ❌ | ✅ |
 | L2.5 插件加载 | 桩 ctx / 真实 cordis 跑 `apply` | ❌ | ✅ |
 | L3 dsh 加载 | `npm run dsh:patch` | ✅ | ✅ |
@@ -149,7 +149,7 @@ L3/L4 在 0.1.5-rc.1 上的复验（临时 `DSH_HOME`，不碰日常 profile）�
 蓝白主题生效，控制台零报错零警告。rc.2 相对 rc.1 只改了 7 个前端包，插件 import 的宿主包一字未改。
 没复验的两项同上。
 
-### 测试分布（757 个）
+### 测试分布（763 个）
 
 | 文件 | 数量 | 重点 |
 |---|---|---|
@@ -163,11 +163,11 @@ L3/L4 在 0.1.5-rc.1 上的复验（临时 `DSH_HOME`，不碰日常 profile）�
 | `dsh-rcs-rules/test` | 20 | 规则插件端到端 + 结果卡片 + 跨赛季入口 |
 | `dsh-rcs-guard/test` | 10 | **真实 cordis** 跑 waterfall |
 | `rcs-core/test/rules-data` | 9 | **规则提取质量**回归 |
-| `dsh-rcs-core/test` | 39 | **真实 cordis** 跑 Service 注册与工具执行（服务没声明进 inject，桩 ctx 测不出，这里会炸）；**全部 26 个工具的返回值逐个拿输出 schema 校验** |
+| `dsh-rcs-core/test` | 42 | **真实 cordis** 跑 Service 注册与工具执行（服务没声明进 inject，桩 ctx 测不出，这里会炸）；**全部 26 个工具的返回值逐个拿输出 schema 校验**，无损 JSON 那一道用宿主自己的 `isJsonValue` |
 | `dsh-rcs-control/test` | 7 | 桩 ctx 跑 apply |
 | `rcs-core/test/kb-index` | 30 | 离线检索：坏数据不得抛、片段不得互相包含、**拉丁文查询不得误报**、多个关键词各自匹配、中文模糊要对上大部分二元组 |
 | `rcs-core/test/kb-real` | 4 | 对真实镜像（没有镜像的机器上跳过）：「Keil 下载 安装」带片段、「量子计算」零命中 |
-| `dsh-rcs-kb/test` | 16 | 知识库插件端到端 + 结果卡片 |
+| `dsh-rcs-kb/test` | 18 | 知识库插件端到端 + 结果卡片；镜像读不到时检索直接报原因，不回「没检索到」 |
 | `rcs-core/test/rule-diff` | 4 | diff 纯逻辑 |
 | `rcs-core/test/training-quiz` | 51 | 改动小测：改动行号、只改注释不出题、**题目必须钉在改动上**、回答原样进报告、报告不打分；追问：提示拒收代码、重问改不动已答的题、报告列出提示原文 |
 | `dsh-rcs-train/test` | 51 | 培训插件端到端 + 改动小测整条链（含追问 → 提示 → 只重问空着的题）；guard → core → train 的模式传递用**真实 cordis** |
@@ -208,6 +208,8 @@ L3/L4 在 0.1.5-rc.1 上的复验（临时 `DSH_HOME`，不碰日常 profile）�
 | **关掉问答框后又弹一次** | 学员在本轮中途关掉改动小测的问答框，本轮结束时提醒照发，框转眼又弹一次 —— 工具明明回了模型「这一轮不用再弹」 | 记下关框时刻，这之前的改动不再自动提醒；验收单按快照算，照样兜底 |
 | **培训工作目录的 PC 测试报「没有 cmake」** | `rcs_support_test` 只凭 `lib/libgtest.a` 判断要不要走 WSL；发给学员的工作目录没有 `lib/`（gtest 按 `/mnt/…` 绝对路径引用），于是落到 Windows 原生，WSL 里明明有 cmake 也叫人去装 Windows 版 —— ring-buffer 这个 PC 测试任务在 Windows 上跑不起来 | CMakeLists 写了 `/mnt/<盘>/` 路径就按 WSL 工程处理。真实发基线 + WSL 实跑：9 条 3 绿 6 红，补完 count / space 后 6 绿 3 红，与课程表预期一致 |
 | **知识库状态工具的返回值和声明对不上** | `rcs_kb_status` 多返回了 failed / bytes / sources / skippedByType，schema 只声明三个字段，dsh 0.1.5-rc.2 校验返回值，一调就报 invalid output；`rcs_kb_sync` 把整份镜像 manifest 原样返回，同样过不了 | schema 补全；同步只回传投影。`dsh-rcs-core/test/tool-outputs` 在真实 cordis 里执行全部工具，逐个拿输出 schema 校验返回值 |
+| **工具返回值里有值为 undefined 的键** | `rcs_toolchain_status` 把找到的工具写成 `hint: undefined`、没找到的写成 `path: undefined`。dsh 只收无损 JSON，一调就报 `value is not lossless JSON` —— 仿写的 schema 校验器不查这一道，测试照样全绿 | 探测结果只写有值的键；`tool-outputs` 改用宿主自己的 `isJsonValue`（dsh-util-values）校验每个工具的返回值 |
+| **镜像读不到时检索只说「没检索到」** | 本地镜像不存在或 manifest 坏了，`rcs_kb_search` 对任何查询都回「没检索到」，再让人去看 `rcs_kb_status` —— 那个工具在真 dsh 里跑的却是旧构建，一调就报 invalid output，两头都查不出原因 | 检索先查镜像状态，读不到就直接报原因和它找的目录；「查不到」只在镜像可用时才说 |
 | **多个关键词被当成一整串检索** | 模型写「Keil 下载 安装」，原文里没有这一串，只剩二元组兜底、结果全无片段，模型断定「安装说明只有标题」并去闯飞书登录页 —— 正文其实就在镜像里 | 查询按空白切词、各自匹配，命中词多的排前；片段先保证每个命中的词各有一段 |
 | **中文模糊匹配凑上一个二元组就算命中** | 「量子计算」只靠一个「计算」二元组，就把检索上限 8 篇占满了无关文档；「急停回路」靠「回路」命中 CAN总线入门 —— 都没有片段 | 中文词的二元组要对上三分之二以上才算；`rcs-core/test/kb-real` 对真实镜像回归 |
 | **把模糊匹配说成「标题命中」** | 无片段时一律标注标题命中，等于骗读者 | 记录 `matchedIn`，如实区分标题/目录/正文/仅相关度 |

@@ -171,6 +171,15 @@ describe.skipIf(!hasBundle)('rcs_kb_search 端到端', () => {
     expect(view.files[0]?.path).toContain('RCSLIB代码规范')
   })
 
+  it('镜像读不出来时直接报原因和目录 —— 不回「没检索到」', async () => {
+    rmSync(join(cacheDir, 'manifest.json'))
+    const err = await tool('rcs_kb_search')!.execute({ query: 'printf' }, exec).catch((e: Error) => e)
+    expect(err).toBeInstanceOf(Error)
+    expect((err as Error).message).toContain('本地镜像不存在或已损坏')
+    expect((err as Error).message).toContain(cacheDir)
+    expect((err as Error).message).toContain('不代表队里没有')
+  })
+
   it('无命中时退回通用卡片，不硬套搜索卡片', async () => {
     const t = tool('rcs_kb_search')!
     const args = { query: '不存在的词' }
@@ -188,6 +197,13 @@ describe.skipIf(!hasBundle)('rcs_kb_status 端到端', () => {
     expect(text).toContain('A02 电控组(通用)')
     expect(text).toContain('2026-08-29')
     expect(text).toMatch(/不联网|断网/)
+  })
+
+  it('manifest 缺了同步时间和来源，也不写出值为 undefined 的键 —— dsh 只收无损 JSON', async () => {
+    writeFileSync(join(cacheDir, 'manifest.json'), JSON.stringify({ version: 1, docs: {} }), 'utf8')
+    const v = (await tool('rcs_kb_status')!.execute({}, exec)) as Record<string, unknown>
+    expect(v['ok']).toBe(true)
+    expect(JSON.parse(JSON.stringify(v))).toStrictEqual(v)
   })
 
   it('镜像缺失时说明原因并指出下一步', async () => {

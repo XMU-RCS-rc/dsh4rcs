@@ -312,13 +312,15 @@ export function kbStatus(cacheDir: string): KbStatus {
   }
   const docs = Object.values(manifest.docs)
   const failed = docs.filter((d) => d.error).length
+  // manifest 来自磁盘，旧版或手改过的可能缺字段。缺了就不写这个键，不写成 undefined ——
+  // dsh 只收无损 JSON，值为 undefined 的键会让整次 rcs_kb_status 判失败。
   return {
     ok: true,
-    syncedAt: manifest.syncedAt,
+    ...(typeof manifest.syncedAt === 'string' ? { syncedAt: manifest.syncedAt } : {}),
     total: docs.length,
     failed,
     bytes: docs.reduce((n, d) => n + (d.bytes ?? 0), 0),
-    sources: manifest.sources,
+    sources: manifest.sources ?? [],
     skippedByType: manifest.skippedByType ?? {},
   }
 }

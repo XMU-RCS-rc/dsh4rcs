@@ -62,6 +62,12 @@ describe('probeToolchain', () => {
     const r = probeToolchain(depsWith([], ['python3']))
     expect(r.find((t) => t.id === 'python')?.available).toBe(true)
   })
+
+  it('返回值里没有值为 undefined 的键 —— dsh 只收无损 JSON，有一个就整次调用判失败', () => {
+    for (const r of [probeToolchain(depsWith([], [])), probeToolchain(depsWith(['UV4.exe'], ['cmake', 'python', 'wsl']))]) {
+      expect(JSON.parse(JSON.stringify(r))).toStrictEqual(r)
+    }
+  })
 })
 
 describe('parseKeilLog', () => {

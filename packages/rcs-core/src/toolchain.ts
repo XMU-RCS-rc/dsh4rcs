@@ -58,6 +58,14 @@ export type ProbeDeps = {
   which: (cmd: string) => string | undefined
 }
 
+/**
+ * 去掉值为 undefined 的键。dsh 只收无损 JSON（dsh-util-values 的 isJsonValue）：
+ * 找到的工具带着 `hint: undefined`、没找到的带着 `path: undefined`，整次 rcs_toolchain_status 就被判失败。
+ */
+function withoutUndefined(t: ToolStatus): ToolStatus {
+  return Object.fromEntries(Object.entries(t).filter(([, v]) => v !== undefined)) as ToolStatus
+}
+
 /** 探测本机工具链。纯函数（依赖注入），便于测试各种组合。 */
 export function probeToolchain(deps: ProbeDeps): ToolStatus[] {
   const keil = KEIL_CANDIDATES.find((p) => deps.exists(p))
@@ -100,7 +108,7 @@ export function probeToolchain(deps: ProbeDeps): ToolStatus[] {
       path: wsl,
       hint: wsl ? undefined : '队内 PC 测试的 gtest 静态库是 Linux 产物，没有 WSL 就只能在 Windows 侧重新编译 gtest。',
     },
-  ]
+  ].map(withoutUndefined)
 }
 
 /**
